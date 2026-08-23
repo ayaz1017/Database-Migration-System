@@ -1,0 +1,66 @@
+@media print {
+  /* Hide non-report UI elements */
+  nav, 
+  aside, 
+  header, 
+  footer, 
+  .sidebar, 
+  .flux-chat-button, 
+  .download-btn, 
+  .abort-btn,
+  button,
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Reset layout for full page print */
+  html, body, #root {
+    background: #ffffff !important;
+    color: #111827 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Make containers print-friendly */
+  .migration-report, main, #main-content {
+    background: #ffffff !important;
+    color: #111827 !important;
+    width: 100% !important;
+    padding: 20px !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Card styling for print */
+  .glass-panel, .glass-card, div[class*="bg-[#0c0c14]"], div[class*="bg-[#12121a]"] {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+    color: #111827 !important;
+    break-inside: avoid;
+    margin-bottom: 16px;
+  }
+
+  /* Text color resets for readability */
+  h1, h2, h3, h4, h5, h6, p, span, td, th {
+    color: #111827 !important;
+  }
+
+  .text-text-secondary, .text-text-tertiary, .text-gray-400, .text-gray-500 {
+    color: #4b5563 !important;
+  }
+
+  /* Ensure colors and backgrounds print accurately */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Page breaks for large report components */
+  .validation-table, .sql-diff-viewer { 
+    break-before: page; 
+  }
+}

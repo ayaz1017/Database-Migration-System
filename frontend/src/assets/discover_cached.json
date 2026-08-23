@@ -1,0 +1,44 @@
+{
+  "databases": ["master", "tempdb", "model", "msdb", "migrated_sql"],
+  "schemas": ["dbo", "guest", "INFORMATION_SCHEMA", "sys"],
+  "tables": [
+    {
+      "name": "orders",
+      "row_count": 200001,
+      "columns": [
+        { "name": "order_id", "type": "int", "nullable": false, "default": null },
+        { "name": "customer_id", "type": "int", "nullable": false, "default": null },
+        { "name": "order_date", "type": "datetime2", "nullable": false, "default": null },
+        { "name": "total_amount", "type": "decimal", "nullable": true, "default": null },
+        { "name": "status", "type": "varchar", "nullable": true, "default": null }
+      ],
+      "primary_keys": ["order_id"],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_order_date",
+          "unique": false,
+          "type": "NONCLUSTERED",
+          "columns": ["order_date"]
+        }
+      ],
+      "check_constraints": ["([total_amount]>=(0))"]
+    },
+    {
+      "name": "test_ident",
+      "row_count": 50,
+      "columns": [
+        { "name": "id", "type": "int", "nullable": false, "default": null },
+        { "name": "val", "type": "varchar", "nullable": true, "default": null }
+      ],
+      "primary_keys": ["id"],
+      "foreign_keys": [],
+      "indexes": [],
+      "check_constraints": []
+    }
+  ],
+  "row_counts": {
+    "orders": 200001,
+    "test_ident": 50
+  }
+}

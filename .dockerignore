@@ -1,0 +1,51 @@
+# Version control
+.git/
+.gitignore
+
+# Python
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/venv/
+backend/.env
+backend/*.db
+backend/.mypy_cache/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.benchmarks/
+backend/tests/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/lighthouse-report.html
+
+# Root-level artifacts
+*.db
+*.zip
+*.log
+*.txt
+*.sql
+*.bat
+data/
+mysql-data/
+scratch/
+tests/
+.benchmarks/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Scripts and test files at root
+*.py
+!backend/**/*.py
+
+# Docker
+.env.docker
+docker-compose.prod.yml
+
+# Docs
+*.md
+!DEPLOY.md

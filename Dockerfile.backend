@@ -1,0 +1,70 @@
+# ─────────────────────────────────────────────────────
+# Fluxline Backend — FastAPI + Uvicorn
+# Multi-stage build for lean runtime image (~400-500MB)
+# Python 3.12-slim matches the development venv
+# ─────────────────────────────────────────────────────
+
+# ── Stage 1: Build wheels ──────────────────────────────
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+# Build-time system deps (gcc, g++ needed to compile psycopg2, pyodbc, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    unixodbc-dev \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy only requirements to maximise layer cache hits
+COPY backend/requirements.txt ./requirements.txt
+
+# Build wheels into /build/wheels — no network needed in Stage 2
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip wheel --no-cache-dir --wheel-dir=/build/wheels -r requirements.txt
+
+
+# ── Stage 2: Lean runtime image ────────────────────────
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Runtime-only system libs (no compiler toolchain)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    libodbc2 \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Prevent .pyc files and enable unbuffered logging
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Install from pre-built wheels — fast, no compiler needed
+COPY --from=builder /build/wheels /wheels
+RUN pip install --no-cache-dir --no-index --find-links=/wheels /wheels/* && \
+    rm -rf /wheels
+
+# Copy backend application code
+COPY backend/ ./backend/
+
+# Create data directory for SQLite persistence (volume mount target)
+RUN mkdir -p /app/data
+
+# Non-root user for security
+RUN useradd -m -u 1000 fluxline && \
+    chown -R fluxline:fluxline /app
+USER fluxline
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s \
+  --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+# Run from /app so "backend.main:app" module path resolves correctly
+CMD ["uvicorn", "backend.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "2"]

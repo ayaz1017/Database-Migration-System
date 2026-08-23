@@ -1,0 +1,10 @@
+import sqlite3
+conn = sqlite3.connect('migrations.db')
+c = conn.cursor()
+c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+print('Tables:', [r[0] for r in c.fetchall()])
+c.execute("SELECT name FROM sqlite_master WHERE type='index'")
+print('Indexes:', [r[0] for r in c.fetchall()])
+c.execute("SELECT COUNT(*) FROM migration_logs")
+print('Log entries:', c.fetchone()[0])
+conn.close()
