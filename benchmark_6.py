@@ -180,9 +180,12 @@ async def run_single_migration(source_conf, target_conf, table_to_migrate):
                 stream = source_engine.stream_table(table_to_migrate, chunk_size)
         
             total_inserted = 0
+            print(f"Migrating {table_to_migrate}... ", end="", flush=True)
             for chunk in stream:
                 inserted = target_engine.bulk_insert(table_to_migrate, chunk)
                 total_inserted += len(chunk) if inserted < 0 else inserted
+                print(f"\rMigrating {table_to_migrate}... {total_inserted} rows inserted.", end="", flush=True)
+            print(f"\rMigrating {table_to_migrate}... {total_inserted} rows inserted. Done!")
                 
         duration = time.time() - start_time
         rows_sec = total_inserted / duration if duration > 0 else 0

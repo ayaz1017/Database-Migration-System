@@ -57,10 +57,10 @@ const ObjectPicker = ({ sourceConfig, options = {}, onOptionsChange }) => {
           setObjects(objectsData || { views: [], procedures: [], triggers: [] })
         }
         
-        // Default to explicit opt-in (migrate_all_tables: false)
+        // Default to migrate all tables
         onOptionsChange({
           ...options,
-          migrate_all_tables: options.migrate_all_tables !== undefined ? options.migrate_all_tables : false,
+          migrate_all_tables: options.migrate_all_tables !== undefined ? options.migrate_all_tables : true,
           raw_selected_tables: options.raw_selected_tables || [],
           selected_tables: options.selected_tables || [],
           migrate_views: options.migrate_views || false,

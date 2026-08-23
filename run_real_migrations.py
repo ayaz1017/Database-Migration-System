@@ -131,12 +131,15 @@ async def run_single_migration(source_conf, target_conf, table_to_migrate, new_t
             stream = source_engine.stream_table(table_name)
     
     total_inserted = 0
+    print(f"Migrating {table_name}...", end="", flush=True)
     for chunk in stream:
         # If table renamed, we should not pass changed keys in rows, but execution engine uses chunk keys as column names
         # Since we renamed the table but didn't rename columns, it's fine.
         inserted = target_engine.bulk_insert(target_table_name, chunk)
         total_inserted += len(chunk) if inserted < 0 else inserted
+        print(f"\rMigrating {table_name}... {total_inserted} rows inserted.", end="", flush=True)
         
+    print(f"\rMigrating {table_name}... {total_inserted} rows inserted. Done!")
     duration = time.time() - start_time
     rows_sec = total_inserted / duration if duration > 0 else 0
     

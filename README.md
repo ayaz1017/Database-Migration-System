@@ -31,13 +31,40 @@ FastAPI Backend (Python 3.12+)
 - MySQL 8.x running on Windows
 - MSSQL Server 2022 running on Ubuntu
 
-## Setup Instructions
-1. Clone repo
-2. Create `backend/.env` with all required keys
-3. Install backend deps: `pip install -r requirements.txt`
-4. Install frontend deps: `npm install`
-5. Run backend: `uvicorn backend.main:app --reload`
-6. Run frontend: `npm run dev`
+## 🚀 Setup Instructions
+
+Follow these commands to get the project running locally:
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/ayaz1017/Database-Migration-System.git
+cd Database-Migration-System
+```
+
+### 2. Backend Setup (FastAPI)
+Open a terminal and set up the Python backend from the root of the project:
+```bash
+# Install required Python packages
+pip install -r backend/requirements.txt
+
+# Create your environment variables file
+cp backend/.env.example backend/.env
+
+# (Edit backend/.env and add your database credentials and API keys)
+
+# Run the backend server
+uvicorn backend.main:app --reload
+```
+
+### 3. Frontend Setup (React)
+Open a new, separate terminal and set up the frontend:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The application should now be accessible in your browser (usually at `http://localhost:5173` or `http://localhost:3000`).
 
 ## Environment Variables
 Ensure the following keys are populated in your `backend/.env` file:

@@ -824,9 +824,9 @@ async def run_migration_pipeline(req: MigrationRequest, job_id: str):
         async with run_stage(job_id, "data", "Migrating Data"):
             def get_chunk_size(row_count: int) -> int:
                 if not row_count or row_count < 10000: return int(os.environ.get("CHUNK_SIZE_TIER1", 1000))
-                if row_count < 100000: return int(os.environ.get("CHUNK_SIZE_TIER2", 10000))
-                if row_count < 1000000: return int(os.environ.get("CHUNK_SIZE_TIER3", 50000))
-                return int(os.environ.get("CHUNK_SIZE_TIER4", 100000))
+                if row_count < 100000: return int(os.environ.get("CHUNK_SIZE_TIER2", 5000))
+                if row_count < 1000000: return int(os.environ.get("CHUNK_SIZE_TIER3", 10000))
+                return int(os.environ.get("CHUNK_SIZE_TIER4", 25000))
             
             total_inserted = 0
             migrated_tables = set()
@@ -845,7 +845,7 @@ async def run_migration_pipeline(req: MigrationRequest, job_id: str):
             async def throttled_broadcast(payload):
                 nonlocal last_bcast
                 now = time.time()
-                if payload.get("status") == "done" or (now - last_bcast) > 1.0:
+                if payload.get("status") == "done" or (now - last_bcast) > 0.1:
                     await broadcast_progress(payload, job_id=job_id)
                     last_bcast = now
                 

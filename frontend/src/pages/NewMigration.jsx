@@ -204,6 +204,16 @@ export default function NewMigration() {
       fk_dependency_mode: options.fk_dependency_mode || 'auto_include'
     }
 
+    if (!migrationOptions.migrate_all_tables && 
+        migrationOptions.selected_tables.length === 0 &&
+        !migrationOptions.migrate_views && 
+        !migrationOptions.migrate_procedures && 
+        !migrationOptions.migrate_triggers) {
+      triggerError('You must select at least one table or database object to migrate.')
+      setIsSubmitting(false)
+      return
+    }
+
     const payload = {
       source: {
         ...source,

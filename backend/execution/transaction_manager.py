@@ -261,6 +261,8 @@ class TransactionManager:
             for k, v in row.items():
                 if isinstance(v, (dict, list)):
                     row[k] = json.dumps(v)
+                elif isinstance(v, (bytearray, memoryview)):
+                    row[k] = bytes(v)
 
         try:
             if self.db_type in ["postgres", "postgresql"]:
