@@ -30,7 +30,19 @@ CRITICAL INSTRUCTIONS:
    - Translate Oracle EXCEPTION syntax to equivalent TRY/CATCH blocks or Postgres EXCEPTION blocks.
    - Insert "-- TRANSLATION_UNCERTAIN: DUAL/DBMS_OUTPUT/EXCEPTION" comments if the translation is approximate.
 7. If the source is Oracle and the object is an INSTEAD OF trigger, insert a "-- TRANSLATION_UNCERTAIN: INSTEAD OF triggers require manual review on target" comment.
-8. Output ONLY the translated SQL/DDL statement(s). Do not include markdown blocks like ```sql or ``` or any explanations outside the code.
+8. If the source is PostgreSQL and the target is MySQL:
+   - Remove `AS $$`, `$$ LANGUAGE plpgsql;`, and `RETURNS trigger/void` clauses.
+   - Convert `:=` assignments to `SET var = value;`.
+   - Convert `::type` casts to `CAST(expr AS type)`.
+   - Move DECLARE variables inside the BEGIN block.
+   - Replace `RAISE NOTICE` with a comment or remove.
+   - Convert `EXCEPTION WHEN OTHERS THEN` to `DECLARE ... HANDLER FOR SQLEXCEPTION`.
+   - Replace `ELSIF` with `ELSEIF`.
+   - For triggers: merge the trigger function body into an inline `CREATE TRIGGER ... BEGIN ... END` block.
+   - Convert `TO_CHAR(date, 'YYYY-MM-DD')` to `DATE_FORMAT(date, '%Y-%m-%d')`.
+   - Convert `ILIKE` to `LIKE`.
+   - Convert `||` string concatenation to `CONCAT(...)`.
+9. Output ONLY the translated SQL/DDL statement(s). Do not include markdown blocks like ```sql or ``` or any explanations outside the code.
 """
 
 
@@ -164,6 +176,18 @@ class ObjectTranslationAgent:
             translated = re.sub(r"\bDATE_FORMAT\s*\(\s*([^,]+),\s*'([^']+)'\s*\)", replace_date_format_mssql, translated, flags=re.IGNORECASE)
             
             # Convert MySQL boolean literals in WHERE / SELECT
+            translated = re.sub(r"=\s*true\b", "= 1", translated, flags=re.IGNORECASE)
+            translated = re.sub(r"=\s*false\b", "= 0", translated, flags=re.IGNORECASE)
+            translated = re.sub(r"\bis\s+true\b", "= 1", translated, flags=re.IGNORECASE)
+            translated = re.sub(r"\bis\s+false\b", "= 0", translated, flags=re.IGNORECASE)
+
+        # For MySQL targets:
+        if target_lower == "mysql":
+            # Strip Postgres type casts like ::text or ::integer
+            translated = re.sub(r"::[a-zA-Z0-9_]+\b", "", translated, flags=re.IGNORECASE)
+            translated = re.sub(r"\bILIKE\b", "LIKE", translated, flags=re.IGNORECASE)
+            translated = re.sub(r"\bTO_CHAR\s*\(\s*([^,]+),\s*'YYYY-MM'\s*\)", r"DATE_FORMAT(\1, '%Y-%m')", translated, flags=re.IGNORECASE)
+            translated = re.sub(r"\bINTERVAL\s+'(\d+)\s+days?'", r"INTERVAL \1 DAY", translated, flags=re.IGNORECASE)
             translated = re.sub(r"=\s*true\b", "= 1", translated, flags=re.IGNORECASE)
             translated = re.sub(r"=\s*false\b", "= 0", translated, flags=re.IGNORECASE)
             translated = re.sub(r"\bis\s+true\b", "= 1", translated, flags=re.IGNORECASE)
@@ -348,7 +372,7 @@ BEGIN
 END;""", True
 
         # Handle Procedure translation to MSSQL
-        if obj.object_type in ["procedure", "function"] and tgt_lower == "mssql":
+        if obj.object_type in ["procedure", "function", "trigger_function"] and tgt_lower == "mssql":
             clean_def = re.sub(r"\bDEFINER\s*=\s*`?[^`\s]+`?\s*@\s*`?[^`\s]+`?\s*", "", raw_def, flags=re.IGNORECASE)
             params_match = re.search(r'\bCREATE\s+PROCEDURE\s+`?[a-zA-Z0-9_]+`?\s*\((.*?)\)\s*BEGIN', clean_def, re.IGNORECASE | re.DOTALL)
             if params_match:
@@ -465,7 +489,7 @@ END;""", True
             return f"{pg_func}\n\n{pg_trig}", True
 
         # Handle Procedure translation to PostgreSQL
-        if obj.object_type in ["procedure", "function"] and tgt_lower in ["postgres", "postgresql"]:
+        if obj.object_type in ["procedure", "function", "trigger_function"] and tgt_lower in ["postgres", "postgresql"]:
             # Strip MySQL DEFINER clause
             clean_def = self._strip_schema_prefixes(raw_def, target_dialect, source_database=source_database)
             clean_def = re.sub(r"\bDEFINER\s*=\s*`?[^`\s]+`?\s*@\s*`?[^`\s]+`?\s*", "", clean_def, flags=re.IGNORECASE)
@@ -511,11 +535,57 @@ END;""", True
             return clean_def, True
 
         # Handle Procedure translation to MySQL
-        if obj.object_type in ["procedure", "function"] and tgt_lower == "mysql":
+        if obj.object_type in ["procedure", "function", "trigger_function"] and tgt_lower == "mysql":
             clean_def = self._strip_schema_prefixes(raw_def, target_dialect, source_database=source_database)
             clean_def = re.sub(r"@([a-zA-Z0-9_]+)", r"\1", clean_def)
             clean_def = re.sub(r"\bcreate\s+procedure\b", "CREATE PROCEDURE", clean_def, flags=re.IGNORECASE)
+            clean_def = re.sub(r"\bAS\s+\$\$\s*DECLARE\b(.*?)\bBEGIN\b", r"BEGIN\nDECLARE\1", clean_def, flags=re.IGNORECASE | re.DOTALL)
+            clean_def = re.sub(r"\bAS\s+\$\$\s*BEGIN\b", "BEGIN", clean_def, flags=re.IGNORECASE)
+            clean_def = re.sub(r"\$\$\s*LANGUAGE\s+plpgsql\s*;", "", clean_def, flags=re.IGNORECASE)
+            clean_def = re.sub(r"\b([a-zA-Z0-9_]+)\s*:=\s*(.+?);", r"SET \1 = \2;", clean_def)
+            clean_def = re.sub(r"::[a-zA-Z0-9_]+\b", "", clean_def, flags=re.IGNORECASE)
+            clean_def = re.sub(r"\bRETURNS\s+(?:void|trigger)\b", "", clean_def, flags=re.IGNORECASE)
+            clean_def = re.sub(r"\bRAISE\s+NOTICE\b", "-- RAISE NOTICE", clean_def, flags=re.IGNORECASE)
+            clean_def = re.sub(r"\bEXCEPTION\s+WHEN\s+OTHERS\s+THEN\b", "DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN", clean_def, flags=re.IGNORECASE)
+            clean_def = re.sub(r"\bELSIF\b", "ELSEIF", clean_def, flags=re.IGNORECASE)
             return clean_def, True
+
+        # Handle Trigger translation to MySQL
+        if obj.object_type == "trigger" and tgt_lower == "mysql":
+            tbl_name = obj.trigger_table or self._extract_trigger_table(raw_def) or "unknown_table"
+            timing = (obj.trigger_timing or "").upper()
+            if timing not in ["BEFORE", "AFTER"]:
+                event_match = re.search(r'\b(AFTER|BEFORE)\s+', raw_def, re.IGNORECASE)
+                timing = event_match.group(1).upper() if event_match else "AFTER"
+
+            events = (obj.trigger_event or "").upper()
+            if not events:
+                event_match = re.search(r'\b(?:AFTER|BEFORE)\s+([A-Z_,\s]+?)\s+ON', raw_def, re.IGNORECASE)
+                if event_match:
+                    events = event_match.group(1).upper().strip()
+                else:
+                    events = "INSERT"
+
+            body = self._extract_trigger_body(raw_def, source_dialect)
+            if not body:
+                body_match = re.search(r'\bBEGIN\b(.*?)\bEND\b', raw_def, re.IGNORECASE | re.DOTALL)
+                body = body_match.group(1).strip() if body_match else ""
+
+            body = re.sub(r'`([^`]+)`', r'\1', body)
+            body = re.sub(r'\b(?!NEW\b)(?!OLD\b)[a-zA-Z_][a-zA-Z0-9_]*\s*\.\s*(?=[a-zA-Z_])', '', body, flags=re.IGNORECASE)
+            
+            body = re.sub(r"\bgetdate\s*\(\s*\)", "CURRENT_TIMESTAMP", body, flags=re.IGNORECASE)
+            body = re.sub(r"\bNEW\.([a-zA-Z0-9_]+)\s*:=\s*(.+?);", r"SET NEW.\1 = \2;", body, flags=re.IGNORECASE)
+            body = re.sub(r"\b([a-zA-Z0-9_]+)\s*:=\s*(.+?);", r"SET \1 = \2;", body)
+            body = re.sub(r"::[a-zA-Z0-9_]+\b", "", body, flags=re.IGNORECASE)
+            body = re.sub(r"\bRAISE\s+NOTICE\b", "-- RAISE NOTICE", body, flags=re.IGNORECASE)
+            body = re.sub(r"\bELSIF\b", "ELSEIF", body, flags=re.IGNORECASE)
+
+            declare_match = re.search(r'\bDECLARE\b(.*?)\bBEGIN\b', raw_def, re.IGNORECASE | re.DOTALL)
+            declare_block = f"DECLARE {declare_match.group(1).strip()};\n" if declare_match else ""
+            
+            mysql_trig = f"CREATE TRIGGER {obj.name} {timing} {events} ON {tbl_name} FOR EACH ROW\nBEGIN\n{declare_block}{body}\nEND;"
+            return mysql_trig, True
 
         clean_def = self._strip_schema_prefixes(raw_def, target_dialect, source_database=source_database)
         return clean_def, True
@@ -539,7 +609,7 @@ END;""", True
             )
             raw_res = await asyncio.wait_for(
                 self.llm_service.generate_response(prompt),
-                timeout=3.0
+                timeout=60.0
             )
             llm_def = raw_res.replace("```sql", "").replace("```", "").strip()
             llm_def = self._strip_schema_prefixes(llm_def, target_dialect=target_dialect, source_database=source_database)
@@ -607,7 +677,7 @@ END;""", True
             )
             raw_res = await asyncio.wait_for(
                 self.llm_service.generate_response(prompt),
-                timeout=3.0
+                timeout=60.0
             )
             llm_def = raw_res.replace("```sql", "").replace("```", "").strip()
             llm_def = self._strip_schema_prefixes(llm_def, target_dialect=target_dialect, source_database=source_database)

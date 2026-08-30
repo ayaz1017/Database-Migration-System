@@ -39,8 +39,15 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000", "*"],
-    allow_credentials=False,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -118,9 +125,28 @@ def init_db():
             email TEXT UNIQUE NOT NULL,
             hashed_password TEXT NOT NULL,
             role TEXT NOT NULL,
+            oauth_provider TEXT,
+            oauth_provider_id TEXT,
+            avatar_url TEXT,
+            name TEXT,
             FOREIGN KEY(org_id) REFERENCES organizations(id)
         )
     """)
+    # Migration: Ensure oauth_provider, oauth_provider_id, avatar_url, name exist on users table
+    cursor.execute("PRAGMA table_info(users)")
+    user_columns = [row[1] for row in cursor.fetchall()]
+    if "oauth_provider" not in user_columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN oauth_provider TEXT")
+    if "oauth_provider_id" not in user_columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN oauth_provider_id TEXT")
+    if "avatar_url" not in user_columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN avatar_url TEXT")
+    if "name" not in user_columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN name TEXT")
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_oauth ON users(oauth_provider, oauth_provider_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS refresh_tokens (
             token TEXT PRIMARY KEY,
@@ -490,6 +516,15 @@ def execute_ddl(cursor, ddl: str, dialect: str):
     clean_ddl = re.sub(r'(?i)^\s*DELIMITER\s+\S+\s*', '', clean_ddl)
     clean_ddl = re.sub(r'(?i)\s*DELIMITER\s+;\s*$', '', clean_ddl)
     clean_ddl = clean_ddl.strip()
+
+    # For MySQL: split DROP IF EXISTS + CREATE into separate statements
+    if dialect == "mysql" and re.search(r'DROP\s+(TRIGGER|PROCEDURE|FUNCTION)\s+IF\s+EXISTS', clean_ddl, re.IGNORECASE):
+        parts = re.split(r';\s*(?=CREATE\s)', clean_ddl, maxsplit=1)
+        for part in parts:
+            stmt = part.strip().rstrip(';') + ';'
+            if stmt.strip() != ';':
+                cursor.execute(stmt)
+        return
 
     # Dollar-quote-aware multi-statement splitter for PostgreSQL
     # Splits on blank-line boundaries while respecting $$ ... $$ blocks
@@ -1065,7 +1100,14 @@ async def run_migration_pipeline(req: MigrationRequest, job_id: str):
                 translation_agent = ObjectTranslationAgent()
             
                 for obj_dict in to_translate:
-                    obj = MigratableObject(**obj_dict)
+                    try:
+                        obj = MigratableObject(**obj_dict)
+                    except Exception as e:
+                        obj_name = obj_dict.get("name", "unknown")
+                        print(f"Warning: Skipping invalid migratable object {obj_name}: {e}")
+                        await broadcast_progress({"type": "log", "level": "WARN", "message": f"Skipping invalid object '{obj_name}': {e}", "stage": "migrate_data"}, job_id=job_id)
+                        continue
+
                     direction = f"{req.source.db_type.lower()}_to_{req.target.db_type.lower()}"
                 
                     await broadcast_progress({"type": "log", "level": "INFO", "message": f"Translating {obj.object_type}: {obj.name}", "table": obj.name, "stage": "migrate_data"}, job_id=job_id)
@@ -1077,7 +1119,7 @@ async def run_migration_pipeline(req: MigrationRequest, job_id: str):
                         res = await translation_agent.translate_procedure_or_trigger(obj, req.source.db_type, req.target.db_type, source_database=req.source.database)
                     
                     # Auto-apply objects if translated definition exists
-                    if obj.object_type in ["view", "procedure", "trigger", "function"] and res.translated_definition:
+                    if obj.object_type in ["view", "procedure", "trigger", "function", "trigger_function"] and res.translated_definition:
                         try:
                             target_raw = get_raw_conn(req.target)
                             cursor = target_raw.cursor()

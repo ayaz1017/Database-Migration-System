@@ -717,6 +717,8 @@ class DiscoveryService:
                 "primary_keys": [],
                 "foreign_keys": [],
                 "indexes": [],
+                "check_constraints": [],
+                "row_count": row_count,
             }
             
             result["row_counts"][f"{schema}.{table_name}"] = row_count
@@ -1190,34 +1192,39 @@ class DiscoveryService:
         """)
         for row in cursor.fetchall():
             p_name, prokind, func_def, ret_type = row
-            is_trigger_func = ret_type == "trigger"
 
             result["procedures"].append(
                 {
                     "object_type": "procedure"
                     if prokind == "p"
-                    else ("trigger_function" if is_trigger_func else "function"),
+                    else "function",
                     "name": p_name,
                     "schema_name": "public",
                     "source_definition": func_def or "",
                 }
             )
 
-        # 3. Fetch Triggers
+        # 3. Fetch Triggers — also resolve the companion trigger function body
         cursor.execute("""
-            SELECT trg.tgname, pg_get_triggerdef(trg.oid), tbl.relname
+            SELECT trg.tgname, pg_get_triggerdef(trg.oid), tbl.relname,
+                   pg_get_functiondef(trg.tgfoid) AS func_def
             FROM pg_trigger trg
             JOIN pg_class tbl ON trg.tgrelid = tbl.oid
             JOIN pg_namespace ns ON tbl.relnamespace = ns.oid
             WHERE ns.nspname = 'public' AND NOT trg.tgisinternal
         """)
         for row in cursor.fetchall():
+            trigger_def = row[1] or ""
+            func_def = row[3] or ""
+            # Combine: function body first, then the trigger statement
+            combined = f"{func_def}\n\n{trigger_def}" if func_def else trigger_def
             result["triggers"].append(
                 {
                     "object_type": "trigger",
                     "name": row[0],
                     "schema_name": "public",
-                    "source_definition": row[1] or "",
+                    "source_definition": combined,
+                    "trigger_table": row[2] or "",
                 }
             )
 

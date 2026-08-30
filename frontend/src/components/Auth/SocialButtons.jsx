@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { toast } from 'sonner'
+import toast from 'react-hot-toast'
 import { Loader2 } from 'lucide-react'
+import { API_BASE_URL } from '../../config'
 
 // Custom Google SVG icon
 const GoogleIcon = () => (
@@ -21,13 +22,30 @@ const GithubIcon = () => (
 export default function SocialButtons({ mode = 'Sign In' }) {
   const [loadingProvider, setLoadingProvider] = useState(null)
 
-  const handleOAuthLogin = (provider) => {
+  const handleOAuthLogin = async (provider) => {
+    if (loadingProvider) return
+    const providerKey = provider.toLowerCase()
     setLoadingProvider(provider)
-    toast.info(
-      `${provider} OAuth is not configured in this environment. Use email or demo login.`,
-      { id: 'oauth-toast', duration: 4000 }
-    )
-    setTimeout(() => setLoadingProvider(null), 600)
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/${providerKey}/url`)
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(data.detail || `${provider} OAuth initialization failed.`)
+      }
+
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        throw new Error(`Unable to start ${provider} login.`)
+      }
+    } catch (err) {
+      toast.error(err.message || `Unable to sign in with ${provider}. Please try again.`, {
+        duration: 6000,
+      })
+      setLoadingProvider(null)
+    }
   }
 
   return (
@@ -38,8 +56,17 @@ export default function SocialButtons({ mode = 'Sign In' }) {
         disabled={loadingProvider !== null}
         className="w-full flex items-center justify-center space-x-2 py-2 px-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg transition-all text-xs font-medium text-zinc-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
       >
-        {loadingProvider === 'Google' ? <Loader2 className="w-3.5 h-3.5 text-zinc-300 animate-spin" /> : <GoogleIcon />}
-        <span>Google</span>
+        {loadingProvider === 'Google' ? (
+          <>
+            <Loader2 className="w-3.5 h-3.5 text-zinc-300 animate-spin" />
+            <span>Connecting...</span>
+          </>
+        ) : (
+          <>
+            <GoogleIcon />
+            <span>Google</span>
+          </>
+        )}
       </button>
 
       <button 
@@ -48,9 +75,19 @@ export default function SocialButtons({ mode = 'Sign In' }) {
         disabled={loadingProvider !== null}
         className="w-full flex items-center justify-center space-x-2 py-2 px-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg transition-all text-xs font-medium text-zinc-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
       >
-        {loadingProvider === 'GitHub' ? <Loader2 className="w-3.5 h-3.5 text-zinc-300 animate-spin" /> : <GithubIcon />}
-        <span>GitHub</span>
+        {loadingProvider === 'GitHub' ? (
+          <>
+            <Loader2 className="w-3.5 h-3.5 text-zinc-300 animate-spin" />
+            <span>Connecting...</span>
+          </>
+        ) : (
+          <>
+            <GithubIcon />
+            <span>GitHub</span>
+          </>
+        )}
       </button>
     </div>
   )
 }
+

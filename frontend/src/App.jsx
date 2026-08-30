@@ -65,6 +65,7 @@ const Login = lazyWithRetry(() => import('./pages/Login'))
 const Register = lazyWithRetry(() => import('./pages/Register'))
 const ChangePassword = lazyWithRetry(() => import('./pages/ChangePassword'))
 const ForgotPassword = lazyWithRetry(() => import('./pages/ForgotPassword'))
+const OAuthCallback = lazyWithRetry(() => import('./pages/OAuthCallback'))
 const UserManagement = lazyWithRetry(() => import('./pages/UserManagement'))
 const Schedules = lazyWithRetry(() => import('./pages/Schedules'))
 const Webhooks = lazyWithRetry(() => import('./pages/Webhooks'))
@@ -93,6 +94,7 @@ function AnimatedRoutes() {
             <Route path="/login" element={<PageTransition><Login /></PageTransition>} />
             <Route path="/register" element={<PageTransition><Register /></PageTransition>} />
             <Route path="/forgot-password" element={<PageTransition><ForgotPassword /></PageTransition>} />
+            <Route path="/auth/callback" element={<PageTransition><OAuthCallback /></PageTransition>} />
             <Route path="/new-migration" element={<Navigate to="/app/new" replace />} />
             
             {/* Authenticated App Routes */}

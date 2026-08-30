@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 import sqlite3
 import uuid
+import urllib.parse
 from datetime import datetime
 
 from backend.services.auth_service import (
@@ -15,6 +17,18 @@ from backend.services.auth_service import (
     require_member_or_above,
     get_db,
     DB_FILE
+)
+from backend.services.oauth_service import (
+    is_google_configured,
+    is_github_configured,
+    generate_oauth_state,
+    validate_oauth_state,
+    get_google_auth_url,
+    get_github_auth_url,
+    exchange_google_code_for_user,
+    exchange_github_code_for_user,
+    sync_oauth_user,
+    FRONTEND_URL,
 )
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -30,6 +44,9 @@ class UserResponse(BaseModel):
     org_id: str
     email: EmailStr
     role: str
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    oauth_provider: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
@@ -178,3 +195,114 @@ def list_users(current_user: dict = Depends(require_admin)):
     users = cursor.fetchall()
     conn.close()
     return [dict(u) for u in users]
+
+# ----------------------------------------------------
+# Google OAuth Endpoints
+# ----------------------------------------------------
+
+@router.get("/google/url")
+def get_google_oauth_url(redirect_to: str = Query(default="/app")):
+    if not is_google_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="Google OAuth is not configured. Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET in server environment."
+        )
+    state = generate_oauth_state("google", redirect_to)
+    return {"url": get_google_auth_url(state)}
+
+@router.get("/google")
+def initiate_google_oauth(redirect_to: str = Query(default="/app")):
+    if not is_google_configured():
+        err_msg = urllib.parse.quote("Google OAuth is not configured. Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET.")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error={err_msg}")
+    state = generate_oauth_state("google", redirect_to)
+    return RedirectResponse(url=get_google_auth_url(state))
+
+@router.get("/google/callback")
+async def google_oauth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None
+):
+    if error:
+        err_msg = urllib.parse.quote(f"Google login was cancelled: {error}")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error={err_msg}")
+    
+    if not code or not state:
+        err_msg = urllib.parse.quote("Missing authorization code or state from Google.")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error={err_msg}")
+
+    state_payload = validate_oauth_state(state, expected_provider="google")
+    if not state_payload:
+        err_msg = urllib.parse.quote("OAuth security validation failed or session expired. Please try again.")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error={err_msg}")
+
+    try:
+        provider_user = await exchange_google_code_for_user(code)
+        auth_result = sync_oauth_user(provider_user)
+        access_token = auth_result["access_token"]
+        refresh_token = auth_result["refresh_token"]
+        target = state_payload.get("redirect_to", "/app")
+        redirect_param = urllib.parse.quote(target)
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/auth/callback?access_token={access_token}&refresh_token={refresh_token}&redirect={redirect_param}"
+        )
+    except Exception as e:
+        err_msg = urllib.parse.quote(f"Unable to sign in with Google: {str(e)}")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error={err_msg}")
+
+# ----------------------------------------------------
+# GitHub OAuth Endpoints
+# ----------------------------------------------------
+
+@router.get("/github/url")
+def get_github_oauth_url(redirect_to: str = Query(default="/app")):
+    if not is_github_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="GitHub OAuth is not configured. Missing GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET in server environment."
+        )
+    state = generate_oauth_state("github", redirect_to)
+    return {"url": get_github_auth_url(state)}
+
+@router.get("/github")
+def initiate_github_oauth(redirect_to: str = Query(default="/app")):
+    if not is_github_configured():
+        err_msg = urllib.parse.quote("GitHub OAuth is not configured. Missing GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET.")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error={err_msg}")
+    state = generate_oauth_state("github", redirect_to)
+    return RedirectResponse(url=get_github_auth_url(state))
+
+@router.get("/github/callback")
+async def github_oauth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None
+):
+    if error:
+        err_msg = urllib.parse.quote(f"GitHub authentication was cancelled: {error}")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error={err_msg}")
+    
+    if not code or not state:
+        err_msg = urllib.parse.quote("Missing authorization code or state from GitHub.")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error={err_msg}")
+
+    state_payload = validate_oauth_state(state, expected_provider="github")
+    if not state_payload:
+        err_msg = urllib.parse.quote("OAuth security validation failed or session expired. Please try again.")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error={err_msg}")
+
+    try:
+        provider_user = await exchange_github_code_for_user(code)
+        auth_result = sync_oauth_user(provider_user)
+        access_token = auth_result["access_token"]
+        refresh_token = auth_result["refresh_token"]
+        target = state_payload.get("redirect_to", "/app")
+        redirect_param = urllib.parse.quote(target)
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/auth/callback?access_token={access_token}&refresh_token={refresh_token}&redirect={redirect_param}"
+        )
+    except Exception as e:
+        err_msg = urllib.parse.quote(f"Unable to sign in with GitHub: {str(e)}")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error={err_msg}")
+

@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class FKEdge(BaseModel):
@@ -34,17 +34,24 @@ class TableGroupResult(BaseModel):
 
 
 class MigratableObject(BaseModel):
-    object_type: Literal["view", "procedure", "function", "trigger"]
+    object_type: Literal["view", "procedure", "function", "trigger", "trigger_function"]
     name: str
     schema_name: str | None = None
-    source_definition: str  # raw original SQL/PLSQL text
+    source_definition: str = ""  # raw original SQL/PLSQL text
     depends_on_tables: list[str] = []  # parsed/best-effort table references
     depends_on_objects: list[str] = []  # other procs/views it calls, if detectable
-    complexity_estimate: Literal["low", "medium", "high"]
+    complexity_estimate: Literal["low", "medium", "high"] = "medium"
     # Trigger-specific metadata (populated from information_schema)
     trigger_table: str | None = None
     trigger_timing: str | None = None  # BEFORE or AFTER
     trigger_event: str | None = None   # INSERT, UPDATE, DELETE, or combinations
+
+    @field_validator("object_type", mode="before")
+    @classmethod
+    def normalize_object_type(cls, v: str) -> str:
+        if v == "trigger_function":
+            return "function"
+        return v
 
 
 class ObjectMigrationResult(BaseModel):
