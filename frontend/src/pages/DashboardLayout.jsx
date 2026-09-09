@@ -459,8 +459,8 @@ export default function DashboardLayout() {
           <div className="flex items-center space-x-2 text-xs font-mono text-muted-slate">
             <span className="text-stark-white font-semibold">Fluxline Console</span>
             <span>/</span>
-            <span className="text-accent-solid font-bold uppercase tracking-wider">
-              {location.pathname === '/app' ? 'Workspace Dashboard' : location.pathname.substring(5).replace(/\//g, ' / ')}
+            <span className="text-accent-solid font-medium text-xs">
+              {location.pathname === '/app' ? 'Workspace dashboard' : location.pathname.substring(5).replace(/\//g, ' / ')}
             </span>
           </div>
           

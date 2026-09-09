@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import apiClient from '../apiClient'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { Database, ChevronRight, Plus, Calendar, Clock, Layers, ShieldAlert, Sparkles, Search, SlidersHorizontal, X, ArrowRight, Zap } from 'lucide-react'
+import { Database, ChevronRight, Plus, Calendar, Clock, Layers, ShieldAlert, Sparkles, Search, SlidersHorizontal, X, ArrowRight, Zap, CheckCircle2, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import AnimatedCounter from '../components/AnimatedCounter'
 import EmptyState from '../components/EmptyState'
@@ -249,14 +249,14 @@ export default function Dashboard() {
           <div className="relative p-5 bg-[#121216] border border-zinc-800 rounded-xl overflow-hidden group hover:border-zinc-700 transition-colors">
             <Layers className="absolute top-4 right-4 w-5 h-5 text-zinc-600 opacity-40 pointer-events-none" />
             <div className="relative z-10 space-y-2">
-              <span className="font-sans text-[11px] font-mono text-zinc-400 uppercase tracking-wider block font-semibold">
-                Pipelines Executed
+              <span className="text-xs text-zinc-400 font-medium block">
+                Pipelines executed
               </span>
               <div className="flex items-baseline">
                 <span className="font-sans text-2xl font-bold text-white">
                   <AnimatedCounter value={totalPipelines} duration={1.2} />
                 </span>
-                <span className="text-xs font-normal text-zinc-500 font-mono ml-2 uppercase">TOTAL</span>
+                <span className="text-xs font-normal text-zinc-500 font-mono ml-2">total</span>
               </div>
             </div>
           </div>
@@ -265,48 +265,58 @@ export default function Dashboard() {
           <div className="relative p-5 bg-[#121216] border border-zinc-800 rounded-xl overflow-hidden group hover:border-zinc-700 transition-colors">
             <Database className="absolute top-4 right-4 w-5 h-5 text-zinc-600 opacity-40 pointer-events-none" />
             <div className="relative z-10 space-y-2">
-              <span className="font-sans text-[11px] font-mono text-zinc-400 uppercase tracking-wider block font-semibold">
-                Records Synced
+              <span className="text-xs text-zinc-400 font-medium block">
+                Records synced
               </span>
               <div className="flex items-baseline">
                 <span className="font-sans text-2xl font-bold text-white">
                   <AnimatedCounter value={totalRows} duration={1.2} />
                 </span>
-                <span className="text-xs font-normal text-zinc-500 font-mono ml-2 uppercase">ROWS</span>
+                <span className="text-xs font-normal text-zinc-500 font-mono ml-2">rows</span>
               </div>
             </div>
           </div>
 
-          {/* Card 3: Parity Score */}
-          <div className="relative p-5 bg-[#121216] border border-zinc-800 rounded-xl overflow-hidden group hover:border-zinc-700 transition-colors">
-            <ShieldAlert className="absolute top-4 right-4 w-5 h-5 text-zinc-600 opacity-40 pointer-events-none" />
-            <div className="relative z-10 space-y-2">
-              <span className="font-sans text-[11px] font-mono text-zinc-400 uppercase tracking-wider block font-semibold">
-                Parity Verification
-              </span>
-              <div className="flex items-baseline">
-                <span className="font-sans text-h3 font-bold text-text-primary">
-                  {totalPipelines > 0 ? (
-                    <AnimatedCounter value={avgValidation} duration={1.2} />
-                  ) : (
-                    '--'
-                  )}
+          {/* Card 3: Parity Verification (Differentiated Audit Status Badge) */}
+          <div className="relative p-5 bg-[#101512] border border-emerald-500/25 rounded-xl overflow-hidden group transition-colors">
+            <div className="relative z-10 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-300 font-medium">
+                  Parity verification
                 </span>
-                <span className="text-sm font-normal text-text-tertiary font-mono ml-1">%</span>
+                {totalPipelines > 0 && avgValidation >= 99 ? (
+                  <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>PASSED</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                    <span>{totalPipelines > 0 ? 'MONITORING' : 'IDLE'}</span>
+                  </span>
+                )}
               </div>
-              
-              {/* Context bar + label (FIX 2) */}
-              <div className="pt-1">
-                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+
+              <div className="flex items-baseline space-x-2">
+                <span className="font-mono text-xl font-bold text-emerald-400">
+                  {totalPipelines > 0 ? `${avgValidation}%` : '--'}
+                </span>
+                <span className="text-xs text-zinc-400 font-mono">
+                  {totalPipelines > 0 ? 'checksum match' : 'no pipelines yet'}
+                </span>
+              </div>
+
+              {/* Context bar + label */}
+              <div className="pt-0.5">
+                <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${avgValidation}%` }}
                     transition={{ duration: 1.2, ease: 'easeOut' }}
-                    className={`h-full rounded-full ${accuracyBgBarColor}`}
+                    className="h-full rounded-full bg-emerald-500"
                   />
                 </div>
-                <span className="text-[10px] font-mono text-text-tertiary mt-1.5 block">
-                  avg across all jobs ({avgValidation}/100)
+                <span className="text-[11px] text-zinc-400 mt-1 block">
+                  Byte-level SHA256 & row count audit
                 </span>
               </div>
             </div>
@@ -376,9 +386,9 @@ export default function Dashboard() {
                 ) : migrations.length === 0 ? (
                   <EmptyState 
                     icon={Database}
-                    title="No pipelines configured"
-                    description="You haven't run any database replications yet. Connect databases and build schemas to kickstart."
-                    actionLabel="Ignite First Pipeline"
+                    title="No migrations configured"
+                    description="Connect your source and target databases to start schema translation and data replication."
+                    actionLabel="Create your first migration"
                     onAction={() => navigate('/app/new')}
                   />
                 ) : (

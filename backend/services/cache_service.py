@@ -1,3 +1,4 @@
+import re
 """
 Lightweight in-memory TTL cache for API response caching.
 Pure Python — no external dependencies (no Redis, no memcached).

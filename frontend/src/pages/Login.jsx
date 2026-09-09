@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
-import { Eye, EyeOff, Loader2, ArrowRight, KeyRound } from 'lucide-react'
+import { Eye, EyeOff, Loader2, KeyRound, Database, Mail } from 'lucide-react'
 import toast from 'react-hot-toast'
 import AuthLayout from '../components/Auth/AuthLayout'
 import SocialButtons from '../components/Auth/SocialButtons'
@@ -18,7 +18,6 @@ export default function Login() {
     const error = searchParams.get('error')
     if (error) {
       toast.error(decodeURIComponent(error), { duration: 6000 })
-      // Clean error param from URL
       searchParams.delete('error')
       setSearchParams(searchParams, { replace: true })
     }
@@ -31,10 +30,10 @@ export default function Login() {
     setIsLoading(true)
     try {
       await login(data.email, data.password)
-      toast.success('Successfully logged in')
+      toast.success('Signed in successfully')
       navigate('/app')
     } catch (err) {
-      toast.error(err.message || 'Login failed: Invalid email or password')
+      toast.error(err.message || 'Invalid email or password')
     } finally {
       setIsLoading(false)
     }
@@ -46,7 +45,7 @@ export default function Login() {
     setValue('password', 'admin')
     try {
       await login('admin@example.com', 'admin')
-      toast.success('Logged in with Demo Admin credentials')
+      toast.success('Signed in with demo admin credentials')
       navigate('/app')
     } catch (err) {
       toast.error(err.message || 'Demo login failed')
@@ -57,106 +56,137 @@ export default function Login() {
 
   return (
     <AuthLayout>
-      <div className="bg-[#121216] border border-zinc-800 rounded-xl p-7 sm:p-8 shadow-xl w-full">
+      <div className="w-full">
         
-        <div className="mb-5">
-          <h2 className="font-sans text-xl font-bold text-white mb-1 tracking-tight">Sign in to Fluxline</h2>
-          <p className="text-xs text-zinc-400">Access your workspace and live migration pipelines</p>
+        {/* Brand Header (matches reference: logo + tagline) */}
+        <div className="flex flex-col items-center text-center mb-6 sm:mb-7">
+          <div className="flex items-center space-x-2.5 mb-1.5">
+            <div className="w-9 h-9 rounded-xl bg-[#242d76] text-white flex items-center justify-center shadow-md shadow-[#242d76]/20">
+              <Database className="w-5 h-5" />
+            </div>
+            <span className="text-3xl font-extrabold text-[#242d76] tracking-tight">Fluxline</span>
+          </div>
+          <p className="text-xs sm:text-sm font-medium text-[#242d76]/75">
+            The heart of your database migration
+          </p>
         </div>
 
-        {/* Demo Login Quick Action */}
-        <div className="mb-5 p-3 bg-zinc-900/80 border border-zinc-800 rounded-lg flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-6 h-6 rounded-md bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-              <KeyRound className="w-3.5 h-3.5" />
+        {/* Primary Form */}
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          
+          {/* Email field with Mail icon */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+              Email <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <Mail className="w-4 h-4" />
+              </div>
+              <input 
+                type="email" 
+                autoComplete="email"
+                {...register('email', { required: 'Email is required' })}
+                className={`w-full bg-white border ${errors.email ? 'border-red-400 focus:border-red-500' : 'border-slate-300 hover:border-slate-400 focus:border-[#242d76] focus:ring-2 focus:ring-[#242d76]/15'} rounded-lg pl-10 pr-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-all outline-none shadow-xs`}
+                placeholder="Enter your email"
+              />
             </div>
-            <div>
-              <p className="text-xs font-semibold text-zinc-200">1-Click Demo Login</p>
-              <p className="text-[11px] font-mono text-zinc-400">admin@example.com / admin</p>
+            {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>}
+          </div>
+
+          {/* Password field with Eye toggle */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+              Password <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <input 
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                {...register('password', { required: 'Password is required' })}
+                className={`w-full bg-white border ${errors.password ? 'border-red-400 focus:border-red-500' : 'border-slate-300 hover:border-slate-400 focus:border-[#242d76] focus:ring-2 focus:ring-[#242d76]/15'} rounded-lg pl-3.5 pr-10 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-all outline-none shadow-xs`}
+                placeholder="Enter password"
+              />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
+            {errors.password && <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>}
+          </div>
+
+          {/* Options row: Remember me + Forgot password */}
+          <div className="flex items-center justify-between pt-1">
+            <label className="flex items-center space-x-2 cursor-pointer select-none">
+              <input 
+                type="checkbox" 
+                className="w-4 h-4 rounded border-slate-300 accent-[#242d76] cursor-pointer" 
+              />
+              <span className="text-xs text-slate-600 font-normal">Remember me</span>
+            </label>
+            
+            <Link 
+              to="/forgot-password" 
+              className="text-xs font-semibold text-[#4e5ac8] hover:text-[#242d76] hover:underline transition-colors"
+            >
+              Forgot password?
+            </Link>
+          </div>
+
+          {/* Log in Pill Button */}
+          <button 
+            type="submit" 
+            disabled={isLoading || isDemoLoading}
+            className="w-full py-2.5 px-6 rounded-full bg-[#242d76] hover:bg-[#1a225e] active:bg-[#141b4c] text-white font-medium text-sm transition-all shadow-md shadow-[#242d76]/20 flex items-center justify-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mt-3"
+          >
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Log in</span>}
+          </button>
+
+        </form>
+
+        {/* Sign up prompt */}
+        <p className="mt-4 text-center text-xs text-slate-600">
+          Don't have an account?{' '}
+          <Link to="/register" className="font-semibold text-[#4e5ac8] hover:text-[#242d76] hover:underline transition-colors">
+            Sign up.
+          </Link>
+        </p>
+
+        {/* Divider */}
+        <div className="flex items-center my-4">
+          <div className="flex-1 border-t border-slate-200"></div>
+          <span className="px-3 text-[10px] text-slate-400 font-medium tracking-wider uppercase">or continue with</span>
+          <div className="flex-1 border-t border-slate-200"></div>
+        </div>
+
+        {/* Social Buttons */}
+        <SocialButtons mode="Sign In" />
+
+        {/* Discreet Local Evaluator Helper */}
+        <div className="mt-4 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
+          <div className="flex items-center space-x-2 text-slate-600">
+            <KeyRound className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span>Evaluating locally?</span>
           </div>
           <button
             type="button"
             onClick={handleDemoLogin}
             disabled={isDemoLoading || isLoading}
-            className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-750 text-zinc-200 text-xs font-medium rounded-md border border-zinc-700 transition-all flex items-center space-x-1 disabled:opacity-50 cursor-pointer"
+            className="text-xs text-[#4e5ac8] hover:text-[#242d76] font-semibold transition-colors cursor-pointer disabled:opacity-50 text-left sm:text-right"
           >
-            {isDemoLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <span>Auto Fill</span>}
+            {isDemoLoading ? 'Filling...' : 'Auto-fill demo credentials'}
           </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3.5">
-          
-          {/* Email */}
-          <div>
-            <label className="block font-sans text-xs font-medium text-zinc-400 mb-1">Email address</label>
-            <input 
-              type="email" 
-              {...register('email', { required: 'Email is required' })}
-              className={`w-full bg-zinc-950 border ${errors.email ? 'border-red-500/50 focus:border-red-500' : 'border-zinc-800 focus:border-indigo-500'} rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none transition-colors`}
-              placeholder="name@company.com"
-            />
-            {errors.email && <p className="mt-1 text-xs text-red-400">{errors.email.message}</p>}
-          </div>
-
-          {/* Password */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block font-sans text-xs font-medium text-zinc-400">Password</label>
-              <Link to="/forgot-password" className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors">
-                Forgot password?
-              </Link>
-            </div>
-            <div className="relative">
-              <input 
-                type={showPassword ? 'text' : 'password'}
-                {...register('password', { required: 'Password is required' })}
-                className={`w-full bg-zinc-950 border ${errors.password ? 'border-red-500/50 focus:border-red-500' : 'border-zinc-800 focus:border-indigo-500'} rounded-lg pl-3 pr-10 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none transition-colors`}
-                placeholder="••••••••"
-              />
-              <button 
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
-              >
-                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-            {errors.password && <p className="mt-1 text-xs text-red-400">{errors.password.message}</p>}
-          </div>
-
-          {/* Submit */}
-          <button 
-            type="submit" 
-            disabled={isLoading || isDemoLoading}
-            className="w-full flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-sans text-xs font-semibold py-2.5 px-4 rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer pt-2"
-          >
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-              <>
-                <span>Sign In to Console</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </>
-            )}
-          </button>
-
-        </form>
-
-        <div className="relative my-5">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-zinc-800"></div>
-          </div>
-          <div className="relative flex justify-center text-[10px] uppercase">
-            <span className="bg-[#121216] px-2 text-zinc-500 font-medium tracking-wider">Or continue with</span>
-          </div>
-        </div>
-
-        <SocialButtons mode="Sign In" />
-
-        <p className="mt-5 text-center text-xs text-zinc-400">
-          Don't have an account?{' '}
-          <Link to="/register" className="font-semibold text-indigo-400 hover:text-indigo-300 transition-colors">
-            Create account
-          </Link>
+        {/* Legal Disclaimer (matching reference: By creating an account or logging in...) */}
+        <p className="mt-5 text-center text-[11px] text-slate-400 leading-relaxed max-w-xs mx-auto">
+          By creating an account or logging in, you agree to the current{' '}
+          <a href="#terms" className="underline hover:text-slate-600">Terms of Service</a> and{' '}
+          <a href="#privacy" className="underline hover:text-slate-600">Privacy Policy</a>
         </p>
 
       </div>

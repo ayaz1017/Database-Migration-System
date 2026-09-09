@@ -14,12 +14,12 @@ def run_instrumented_migration():
         ms_cur = ms_conn.cursor()
         pg_cur = pg_conn.cursor()
 
-        # Step 8: Source Count
+        
         ms_cur.execute("SELECT COUNT(*) FROM test;")
         source_count = ms_cur.fetchone()[0]
         print(f"Source count: {source_count}")
 
-        # Step 1: Verify Extraction
+        
         ms_cur.execute("SELECT Id, FLAG, Name, CreatedAt, UpdatedAt, TimeZoneValue FROM test;")
         rows = ms_cur.fetchall()
         print("Rows fetched:", len(rows))
@@ -45,7 +45,7 @@ def run_instrumented_migration():
         failed_count = 0
         skipped_count = 0
 
-        # Step 6: Batch Diagnosis
+        
         try:
             print(f"\nAttempting execute_batch with {len(batch_data)} rows...")
             execute_batch(pg_cur, insert_query, batch_data)

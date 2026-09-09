@@ -355,14 +355,14 @@ export default function NewMigration() {
               <Server className="w-3.5 h-3.5 text-accent-solid" />
             </div>
             <div>
-              <h2 className="text-[11px] font-semibold tracking-[0.08em] uppercase text-text-tertiary font-sans">Source Endpoint</h2>
-              <p className="text-[8px] font-mono text-muted-slate uppercase mt-0.5">Extract schema & data</p>
+              <h2 className="text-xs font-semibold text-text-secondary font-sans">Source endpoint</h2>
+              <p className="text-[10px] text-muted-slate mt-0.5">Extract schema & data</p>
             </div>
           </div>
 
           <div className="space-y-3">
             <div>
-              <label className="block text-[11px] font-semibold tracking-[0.08em] uppercase text-text-tertiary font-sans mb-1.5">Engine Dialect</label>
+              <label className="block text-xs font-medium text-text-secondary font-sans mb-1.5">Engine dialect</label>
               <div className="grid grid-cols-4 gap-1.5">
                 {[
                   { value: 'mssql', label: 'MSSQL' },
@@ -423,10 +423,12 @@ export default function NewMigration() {
                 />
               </div>
               <div>
-                <label className="block text-[12px] font-medium text-text-secondary font-sans mb-1">Database</label>
+                <label className="block text-[12px] font-medium text-text-secondary font-sans mb-1">
+                  {source.db_type === 'oracle' ? 'Service Name / PDB' : 'Database'}
+                </label>
                 <input 
                   type="text" 
-                  placeholder="e.g. production_db"
+                  placeholder={source.db_type === 'oracle' ? 'e.g. XEPDB1 or XE' : 'e.g. production_db'}
                   value={source.database} 
                   onChange={e => {
                     setSource({...source, database: e.target.value})
@@ -445,7 +447,7 @@ export default function NewMigration() {
                 <input 
                   type="text" 
                   autoComplete="off"
-                  placeholder={source.db_type === 'mssql' ? 'e.g. sa' : 'e.g. root'}
+                  placeholder={source.db_type === 'oracle' ? 'e.g. SYSTEM' : source.db_type === 'mssql' ? 'e.g. sa' : 'e.g. root'}
                   value={source.username} 
                   onChange={e => {
                     setSource({...source, username: e.target.value})
@@ -504,14 +506,14 @@ export default function NewMigration() {
               <Server className="w-3.5 h-3.5 text-status-info" />
             </div>
             <div>
-              <h2 className="text-[11px] font-semibold tracking-[0.08em] uppercase text-text-tertiary font-sans">Target Endpoint</h2>
-              <p className="text-[8px] font-mono text-muted-slate uppercase mt-0.5">Load translated schema & data</p>
+              <h2 className="text-xs font-semibold text-text-secondary font-sans">Target endpoint</h2>
+              <p className="text-[10px] text-muted-slate mt-0.5">Load translated schema & data</p>
             </div>
           </div>
 
           <div className="space-y-3">
             <div>
-              <label className="block text-[11px] font-semibold tracking-[0.08em] uppercase text-text-tertiary font-sans mb-1.5">Engine Dialect</label>
+              <label className="block text-xs font-medium text-text-secondary font-sans mb-1.5">Engine dialect</label>
               <div className="grid grid-cols-4 gap-1.5">
                 {[
                   { value: 'postgres', label: 'Postgres' },
@@ -572,10 +574,12 @@ export default function NewMigration() {
                 />
               </div>
               <div>
-                <label className="block text-[12px] font-medium text-text-secondary font-sans mb-1">Database</label>
+                <label className="block text-[12px] font-medium text-text-secondary font-sans mb-1">
+                  {target.db_type === 'oracle' ? 'Service Name / PDB' : 'Database'}
+                </label>
                 <input 
                   type="text" 
-                  placeholder="e.g. migration_target"
+                  placeholder={target.db_type === 'oracle' ? 'e.g. XEPDB1 or XE' : 'e.g. migration_target'}
                   value={target.database} 
                   onChange={e => {
                     setTarget({...target, database: e.target.value})
@@ -594,7 +598,7 @@ export default function NewMigration() {
                 <input 
                   type="text" 
                   autoComplete="off"
-                  placeholder={target.db_type === 'postgres' ? 'e.g. postgres' : 'e.g. root'}
+                  placeholder={target.db_type === 'oracle' ? 'e.g. SYSTEM' : target.db_type === 'postgres' ? 'e.g. postgres' : 'e.g. root'}
                   value={target.username} 
                   onChange={e => {
                     setTarget({...target, username: e.target.value})
@@ -671,21 +675,21 @@ export default function NewMigration() {
                   <Lock className="w-4.5 h-4.5 text-muted-slate" />
                 </div>
                 <div className="space-y-1.5">
-                  <h3 className="text-[11px] font-mono font-black uppercase text-stark-white tracking-widest">Asset Catalog Locked</h3>
-                  <p className="text-[9px] font-mono text-muted-slate uppercase leading-relaxed">
+                  <h3 className="text-xs font-semibold text-stark-white">Asset catalog locked</h3>
+                  <p className="text-xs text-muted-slate leading-relaxed">
                     Test and verify source connection credentials to load discovered catalog.
                   </p>
                 </div>
                 
                 {/* Visual arrow pointing back to source verification */}
-                <div className="flex items-center justify-center space-x-1.5 text-[9px] font-mono text-accent-solid mt-1">
+                <div className="flex items-center justify-center space-x-1.5 text-xs text-accent-solid mt-1">
                   <motion.div 
                     animate={{ x: [0, -4, 0] }}
                     transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                   </motion.div>
-                  <span className="font-black uppercase tracking-wider">Verify Source Endpoint</span>
+                  <span className="font-medium">Verify source endpoint</span>
                 </div>
               </div>
             </motion.div>
@@ -703,8 +707,8 @@ export default function NewMigration() {
                   <Layers className="w-4 h-4 text-status-warning" />
                 </div>
                 <div>
-                  <h2 className="text-xs font-mono font-black text-stark-white uppercase tracking-wider">Database Objects Catalog</h2>
-                  <p className="text-[9px] font-mono text-muted-slate uppercase mt-0.5">Select assets to map & translate</p>
+                  <h2 className="text-xs font-semibold text-stark-white">Database objects catalog</h2>
+                  <p className="text-[10px] text-muted-slate mt-0.5">Select assets to map & translate</p>
                 </div>
               </div>
               
@@ -740,8 +744,8 @@ export default function NewMigration() {
                   <Lock className="w-4.5 h-4.5 text-muted-slate" />
                 </div>
                 <div className="space-y-1.5">
-                  <h3 className="text-[11px] font-mono font-black uppercase text-stark-white tracking-widest">Settings Locked</h3>
-                  <p className="text-[9px] font-mono text-muted-slate uppercase leading-relaxed">
+                  <h3 className="text-xs font-semibold text-stark-white">Settings locked</h3>
+                  <p className="text-xs text-muted-slate leading-relaxed">
                     Verify target endpoint connection credentials to unlock pipeline parameters.
                   </p>
                 </div>
@@ -754,7 +758,7 @@ export default function NewMigration() {
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                   </motion.div>
-                  <span className="font-black uppercase tracking-wider">Verify Target Endpoint</span>
+                  <span className="font-medium text-xs">Verify target endpoint</span>
                 </div>
               </div>
             </motion.div>

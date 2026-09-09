@@ -1,3 +1,4 @@
+import re
 """
 Robust SQLite session management for the Fluxline migration tracking database.
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
-import { Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Database, Mail } from 'lucide-react'
 import toast from 'react-hot-toast'
 import AuthLayout from '../components/Auth/AuthLayout'
 import SocialButtons from '../components/Auth/SocialButtons'
@@ -30,111 +30,128 @@ export default function Register() {
 
   return (
     <AuthLayout>
-      <div className="bg-[#121216] border border-zinc-800 rounded-xl p-7 sm:p-8 shadow-xl w-full">
+      <div className="w-full">
         
-        <div className="mb-5">
-          <h2 className="font-sans text-xl font-bold text-white mb-1 tracking-tight">Create your account</h2>
-          <p className="text-xs text-zinc-400">Start deterministic migrations with zero downtime</p>
+        {/* Brand Header */}
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="flex items-center space-x-2 mb-1.5">
+            <div className="w-8 h-8 rounded-xl bg-[#242d76] text-white flex items-center justify-center shadow-md shadow-[#242d76]/20">
+              <Database className="w-4 h-4" />
+            </div>
+            <span className="text-2xl font-extrabold text-[#242d76] tracking-tight">Fluxline</span>
+          </div>
+          <p className="text-xs text-slate-500">
+            Start high-performance database migrations with zero downtime
+          </p>
         </div>
 
+        {/* Form */}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-3.5">
           
           <div className="grid grid-cols-2 gap-3">
-            {/* First Name */}
             <div>
-              <label className="block font-sans text-xs font-medium text-zinc-400 mb-1">First name</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                First name <span className="text-red-500">*</span>
+              </label>
               <input 
                 type="text" 
-                {...register('firstName', { required: 'First name is required' })}
-                className={`w-full bg-zinc-950 border ${errors.firstName ? 'border-red-500/50' : 'border-zinc-800 focus:border-indigo-500'} rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none transition-colors`}
+                {...register('firstName', { required: 'Required' })}
+                className={`w-full bg-white border ${errors.firstName ? 'border-red-400 focus:border-red-500' : 'border-slate-300 hover:border-slate-400 focus:border-[#242d76] focus:ring-2 focus:ring-[#242d76]/15'} rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition-all outline-none shadow-xs`}
                 placeholder="Jane"
               />
-              {errors.firstName && <p className="mt-1 text-[11px] text-red-400">{errors.firstName.message}</p>}
+              {errors.firstName && <p className="mt-1 text-[11px] text-red-500">{errors.firstName.message}</p>}
             </div>
-            {/* Last Name */}
+
             <div>
-              <label className="block font-sans text-xs font-medium text-zinc-400 mb-1">Last name</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Last name <span className="text-red-500">*</span>
+              </label>
               <input 
                 type="text" 
-                {...register('lastName', { required: 'Last name is required' })}
-                className={`w-full bg-zinc-950 border ${errors.lastName ? 'border-red-500/50' : 'border-zinc-800 focus:border-indigo-500'} rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none transition-colors`}
+                {...register('lastName', { required: 'Required' })}
+                className={`w-full bg-white border ${errors.lastName ? 'border-red-400 focus:border-red-500' : 'border-slate-300 hover:border-slate-400 focus:border-[#242d76] focus:ring-2 focus:ring-[#242d76]/15'} rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition-all outline-none shadow-xs`}
                 placeholder="Doe"
               />
-              {errors.lastName && <p className="mt-1 text-[11px] text-red-400">{errors.lastName.message}</p>}
+              {errors.lastName && <p className="mt-1 text-[11px] text-red-500">{errors.lastName.message}</p>}
             </div>
           </div>
 
-          {/* Email */}
           <div>
-            <label className="block font-sans text-xs font-medium text-zinc-400 mb-1">Work email</label>
-            <input 
-              type="email" 
-              {...register('email', { required: 'Email is required' })}
-              className={`w-full bg-zinc-950 border ${errors.email ? 'border-red-500/50 focus:border-red-500' : 'border-zinc-800 focus:border-indigo-500'} rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none transition-colors`}
-              placeholder="jane@company.com"
-            />
-            {errors.email && <p className="mt-1 text-[11px] text-red-400">{errors.email.message}</p>}
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Work email <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                <Mail className="w-4 h-4" />
+              </div>
+              <input 
+                type="email" 
+                autoComplete="email"
+                {...register('email', { required: 'Work email is required' })}
+                className={`w-full bg-white border ${errors.email ? 'border-red-400 focus:border-red-500' : 'border-slate-300 hover:border-slate-400 focus:border-[#242d76] focus:ring-2 focus:ring-[#242d76]/15'} rounded-lg pl-9 pr-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition-all outline-none shadow-xs`}
+                placeholder="jane@company.com"
+              />
+            </div>
+            {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>}
           </div>
 
-          {/* Password */}
           <div>
-            <label className="block font-sans text-xs font-medium text-zinc-400 mb-1">Password</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Password <span className="text-red-500">*</span>
+            </label>
             <div className="relative">
               <input 
                 type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
                 {...register('password', { 
                   required: 'Password is required',
                   minLength: { value: 6, message: 'Must be at least 6 characters' }
                 })}
-                className={`w-full bg-zinc-950 border ${errors.password ? 'border-red-500/50 focus:border-red-500' : 'border-zinc-800 focus:border-indigo-500'} rounded-lg pl-3 pr-10 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none transition-colors`}
+                className={`w-full bg-white border ${errors.password ? 'border-red-400 focus:border-red-500' : 'border-slate-300 hover:border-slate-400 focus:border-[#242d76] focus:ring-2 focus:ring-[#242d76]/15'} rounded-lg pl-3 pr-10 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition-all outline-none shadow-xs`}
                 placeholder="••••••••"
               />
               <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                title={showPassword ? 'Hide password' : 'Show password'}
               >
-                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            {errors.password && <p className="mt-1 text-[11px] text-red-400">{errors.password.message}</p>}
+            {errors.password && <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>}
           </div>
 
-          {/* Submit */}
           <button 
             type="submit" 
             disabled={isLoading}
-            className="w-full flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-sans text-xs font-semibold py-2.5 px-4 rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer pt-2"
+            className="w-full py-2.5 px-6 rounded-full bg-[#242d76] hover:bg-[#1a225e] active:bg-[#141b4c] text-white font-medium text-sm transition-all shadow-md shadow-[#242d76]/20 flex items-center justify-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mt-2"
           >
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-              <>
-                <span>Create Workspace</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </>
-            )}
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Create account</span>}
           </button>
-          
-          <p className="text-[11px] text-zinc-500 text-center mt-1.5 leading-relaxed">
-            By signing up, you agree to our <a href="#" className="text-zinc-400 hover:text-white underline">Terms</a> and <a href="#" className="text-zinc-400 hover:text-white underline">Privacy Policy</a>.
-          </p>
+
         </form>
 
-        <div className="relative my-5">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-zinc-800"></div>
-          </div>
-          <div className="relative flex justify-center text-[10px] uppercase">
-            <span className="bg-[#121216] px-2 text-zinc-500 font-medium tracking-wider">Or register with</span>
-          </div>
+        {/* Divider */}
+        <div className="flex items-center my-4">
+          <div className="flex-1 border-t border-slate-200"></div>
+          <span className="px-3 text-[10px] text-slate-400 font-medium tracking-wider uppercase">or</span>
+          <div className="flex-1 border-t border-slate-200"></div>
         </div>
 
         <SocialButtons mode="Sign Up" />
 
-        <p className="mt-5 text-center text-xs text-zinc-400">
+        <p className="mt-5 text-center text-xs text-slate-600">
           Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-indigo-400 hover:text-indigo-300 transition-colors">
-            Sign In
+          <Link to="/login" className="font-semibold text-[#4e5ac8] hover:text-[#242d76] hover:underline transition-colors">
+            Log in
           </Link>
+        </p>
+
+        <p className="mt-5 text-center text-[11px] text-slate-400 leading-relaxed max-w-xs mx-auto">
+          By registering, you agree to our{' '}
+          <a href="#terms" className="underline hover:text-slate-600">Terms of Service</a> and{' '}
+          <a href="#privacy" className="underline hover:text-slate-600">Privacy Policy</a>
         </p>
 
       </div>

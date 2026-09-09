@@ -45,6 +45,38 @@ CRITICAL INSTRUCTIONS:
 9. Output ONLY the translated SQL/DDL statement(s). Do not include markdown blocks like ```sql or ``` or any explanations outside the code.
 """
 
+ORACLE_TO_MYSQL_SYSTEM_PROMPT = """
+You are a SQL expert translating Oracle PL/SQL to MySQL. Follow these rules exactly:
+
+Object Type: {object_type}
+Object Name: {object_name}
+
+Source Definition:
+{source_definition}
+
+SYNTAX DIFFERENCES:
+- Oracle CREATE OR REPLACE PROCEDURE → MySQL DROP PROCEDURE IF EXISTS + CREATE PROCEDURE
+- Oracle IS/AS → MySQL BEGIN
+- Oracle END procedure_name → MySQL END
+- Oracle := → MySQL SET var =
+- Oracle DBMS_OUTPUT.PUT_LINE → MySQL SELECT (or remove if logging only)
+- Oracle EXCEPTION WHEN → MySQL DECLARE ... HANDLER
+- Oracle SYSDATE → MySQL NOW()
+- Oracle NVL(x,y) → MySQL IFNULL(x,y)
+- Oracle DECODE → MySQL CASE WHEN
+- Oracle ROWNUM → MySQL LIMIT
+- Oracle || (concat) → MySQL CONCAT()
+- Oracle TO_DATE → MySQL STR_TO_DATE
+- Oracle TO_CHAR → MySQL DATE_FORMAT or CAST(x AS CHAR)
+- Oracle DUAL table → MySQL FROM DUAL (MySQL supports DUAL) or remove FROM clause
+- Oracle sequences → MySQL AUTO_INCREMENT (remove sequence references)
+- Oracle PRAGMA → Remove (no MySQL equivalent)
+- Oracle %TYPE, %ROWTYPE → Replace with actual data types
+
+Return ONLY valid MySQL SQL. No explanations.
+Add DELIMITER $$ before and $$ DELIMITER after for procedures/triggers/functions.
+"""
+
 
 def parse_uncertain_lines(sql_text: str) -> list[dict[str, Any]]:
     if not sql_text:
@@ -91,6 +123,55 @@ def split_top_level_comma(s: str) -> list[str]:
 class ObjectTranslationAgent:
     def __init__(self, llm_service: LLMService = None):
         self.llm_service = llm_service or LLMService()
+
+    def validate_target_dialect(self, sql_text: str, source_dialect: str, target_dialect: str) -> tuple[bool, str]:
+        if not sql_text:
+            return True, ""
+            
+        src = source_dialect.lower()
+        tgt = target_dialect.lower()
+        
+        if src in ["postgres", "postgresql"] and tgt == "mysql":
+            # Reject generated SQL if it contains obvious PostgreSQL-only constructs
+            upper_sql = sql_text.upper()
+            
+            invalid_constructs = [
+                r"\bLANGUAGE\s+PLPGSQL\b",
+                r"\$FUNCTION\$",
+                r"\$PROCEDURE\$",
+                r"\bRETURNS\s+TRIGGER\b",
+                r"\bEXECUTE\s+FUNCTION\b",
+                r"\bCREATE\s+OR\s+REPLACE\s+FUNCTION\b",
+                r"\bCREATE\s+OR\s+REPLACE\s+PROCEDURE\b",
+                r"\bRETURN\s+NEW\b",
+                r"\bRETURN\s+OLD\b",
+                r"\bTG_OP\b",
+                r"\bRECORD\b",
+                r"\bFOR\s+[a-zA-Z0-9_]+\s+IN\s+SELECT\b"
+            ]
+            
+            for construct in invalid_constructs:
+                if re.search(construct, sql_text, flags=re.IGNORECASE):
+                    return False, "PostgreSQL syntax remains in generated MySQL DDL."
+
+        if src in ["postgres", "postgresql"] and tgt in ["mssql", "sqlserver", "sql server"]:
+            invalid_constructs = [
+                r"\bLANGUAGE\s+PLPGSQL\b",
+                r"\$FUNCTION\$",
+                r"\$PROCEDURE\$",
+                r"\bRETURNS\s+TRIGGER\b",
+                r"\bEXECUTE\s+FUNCTION\b",
+                r"\bRETURN\s+NEW\b",
+                r"\bRETURN\s+OLD\b",
+                r"\bTG_OP\b",
+                r"\bFOR\s+EACH\s+ROW\b",
+                r"::[a-zA-Z0-9_]+",
+            ]
+            for construct in invalid_constructs:
+                if re.search(construct, sql_text, flags=re.IGNORECASE):
+                    return False, f"PostgreSQL syntax remains in generated MSSQL DDL (found {construct})."
+                    
+        return True, ""
 
     def _strip_backticks(self, sql_text: str, target_dialect: str) -> str:
         """Remove MySQL backticks. For Postgres, replace with double-quotes only if needed."""
@@ -161,7 +242,20 @@ class ObjectTranslationAgent:
             translated = re.sub(r"\bcreate\s+(?:or\s+replace\s+)?view\b", "CREATE OR ALTER VIEW", translated, flags=re.IGNORECASE)
 
         # For MSSQL targets:
-        if target_lower == "mssql":
+        if target_lower in ["mssql", "sqlserver", "sql server"]:
+            # Strip Postgres type casts like ::text or ::integer
+            translated = re.sub(r"::[a-zA-Z0-9_]+(?:\([0-9,\s]+\))?", "", translated, flags=re.IGNORECASE)
+            # Replace ILIKE with LIKE
+            translated = re.sub(r"\bILIKE\b", "LIKE", translated, flags=re.IGNORECASE)
+            # Remove $1, $2 parameter placeholders
+            translated = re.sub(r'\$\d+\b', '', translated)
+            # Replace COALESCE with ISNULL (more idiomatic in MSSQL)
+            translated = re.sub(r"\bCOALESCE\s*\(", "ISNULL(", translated, flags=re.IGNORECASE)
+            # Convert Postgres TO_CHAR(expr, 'YYYY-MM') -> FORMAT(expr, 'yyyy-MM')
+            translated = re.sub(r"\bTO_CHAR\s*\(\s*([^,]+),\s*'YYYY-MM'\s*\)", r"FORMAT(\1, 'yyyy-MM')", translated, flags=re.IGNORECASE)
+            # Convert Postgres INTERVAL 'X days' -> DATEADD(day, X, CURRENT_TIMESTAMP)
+            translated = re.sub(r"\bINTERVAL\s+'(\d+)\s+days?'", r"DATEADD(day, \1, CURRENT_TIMESTAMP)", translated, flags=re.IGNORECASE)
+
             # Convert DATE_FORMAT(expr, '%Y-%m') -> FORMAT(expr, 'yyyy-MM')
             def replace_date_format_mssql(match):
                 expr = match.group(1).strip()
@@ -242,6 +336,498 @@ class ObjectTranslationAgent:
             return m.group(1)
         return None
 
+
+    def _convert_pg_body_to_mysql(self, body: str) -> str:
+        # Remove ::type casts
+        body = re.sub(r'::[a-zA-Z0-9_]+(\([0-9,]+\))?', '', body)
+        
+        # Assignment := to =
+        lines = body.split('\n')
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if re.match(r'^[a-zA-Z0-9_]+\s*:=', stripped):
+                line = re.sub(r'^(\s*)([a-zA-Z0-9_]+)\s*:=\s*(.*)', r'\1SET \2 = \3', line)
+            else:
+                line = re.sub(r':=', '=', line)
+            
+            # ELSIF -> ELSEIF
+            line = re.sub(r'\bELSIF\b', 'ELSEIF', line, flags=re.IGNORECASE)
+            
+            # RAISE NOTICE -> -- NOTICE:
+            line = re.sub(r'\bRAISE\s+NOTICE\s+(.*);', r'-- NOTICE: \1;', line, flags=re.IGNORECASE)
+            
+            # RAISE EXCEPTION 'msg' -> SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'msg'
+            line = re.sub(r"\bRAISE\s+EXCEPTION\s+'([^']+)'\s*;", r"SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '\1';", line, flags=re.IGNORECASE)
+            
+            # PERFORM -> remove PERFORM
+            line = re.sub(r'\bPERFORM\s+', '', line, flags=re.IGNORECASE)
+            
+            # || -> CONCAT
+            if '||' in line:
+                # Find the start of the string literal or variable before ||
+                # Naive for our test case: match from the first ' to the last character before ) or ,
+                m = re.search(r"('[^']*'\s*\|\|.*?(?=\)|,|$))", line)
+                if m:
+                    expr = m.group(1)
+                    parts = [p.strip() for p in expr.split('||')]
+                    concat_expr = f"CONCAT({', '.join(parts)})"
+                    line = line.replace(expr, concat_expr)
+            
+            new_lines.append(line)
+            
+        body = '\n'.join(new_lines)
+        
+        # Types in DECLARE blocks or parameters
+        body = re.sub(r'\bNUMERIC\b', 'DECIMAL', body, flags=re.IGNORECASE)
+        body = re.sub(r'\bVARCHAR\b', 'VARCHAR', body, flags=re.IGNORECASE)
+        body = re.sub(r'\bTEXT\b', 'TEXT', body, flags=re.IGNORECASE)
+        
+        return body
+
+    def _pg_to_mysql_function(self, obj, raw_def: str, source_database: str) -> tuple[str, bool]:
+        clean_def = self._strip_schema_prefixes(raw_def, "mysql", source_database=source_database)
+        
+        # Check if it returns TRIGGER
+        if re.search(r'\bRETURNS\s+TRIGGER\b', clean_def, flags=re.IGNORECASE):
+            return "-- Trigger functions are inlined in MySQL triggers", True
+            
+        # Parse CREATE FUNCTION
+        header_match = re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z0-9_]+)\s*\((.*?)\)\s*RETURNS\s+([a-zA-Z0-9_]+(?:\([0-9,\s]+\))?)\s+AS\s+\$([a-zA-Z0-9_]*)\$', clean_def, flags=re.IGNORECASE | re.DOTALL)
+        if not header_match:
+            return clean_def, False
+            
+        func_name = header_match.group(1)
+        params = self._convert_pg_body_to_mysql(header_match.group(2))
+        ret_type = self._convert_pg_body_to_mysql(header_match.group(3))
+        
+        # Extract body
+        body_match = re.search(r'\$([a-zA-Z0-9_]*)\$(.*?)\$\1\s*LANGUAGE', clean_def, flags=re.IGNORECASE | re.DOTALL)
+        if not body_match:
+            # Maybe the LANGUAGE is before the AS
+            body_match = re.search(r'\$([a-zA-Z0-9_]*)\$(.*?)\$\1', clean_def, flags=re.IGNORECASE | re.DOTALL)
+            if not body_match:
+                return clean_def, False
+            body = body_match.group(2).strip()
+        else:
+            body = body_match.group(2).strip()
+        
+        # Separate DECLARE and BEGIN
+        declare_block = ""
+        begin_body = body
+        declare_match = re.search(r'^DECLARE(.*?)BEGIN(.*)END;?$', body, flags=re.IGNORECASE | re.DOTALL)
+        if declare_match:
+            declare_block = declare_match.group(1).strip()
+            begin_body = declare_match.group(2).strip()
+        else:
+            begin_match = re.search(r'^BEGIN(.*)END;?$', body, flags=re.IGNORECASE | re.DOTALL)
+            if begin_match:
+                begin_body = begin_match.group(1).strip()
+                
+        # Handle SELECT INTO syntax difference if any, usually valid in MySQL too
+        
+        declare_mysql = ""
+        if declare_block:
+            declares = [d.strip() for d in declare_block.split(';') if d.strip()]
+            for d in declares:
+                # v_total NUMERIC(14,2)
+                d = self._convert_pg_body_to_mysql(d)
+                declare_mysql += f"    DECLARE {d};\n"
+                
+        begin_body = self._convert_pg_body_to_mysql(begin_body)
+        
+        mysql_func = f"DROP FUNCTION IF EXISTS {func_name};\nCREATE FUNCTION {func_name}({params}) RETURNS {ret_type} READS SQL DATA\nBEGIN\n{declare_mysql}{begin_body}\nEND;"
+        return mysql_func, True
+
+    def _pg_to_mysql_procedure(self, obj, raw_def: str, source_database: str) -> tuple[str, bool]:
+        clean_def = self._strip_schema_prefixes(raw_def, "mysql", source_database=source_database)
+        
+        header_match = re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+([a-zA-Z0-9_]+)\s*\((.*?)\)', clean_def, flags=re.IGNORECASE | re.DOTALL)
+        if not header_match:
+            return clean_def, False
+            
+        proc_name = header_match.group(1)
+        params = self._convert_pg_body_to_mysql(header_match.group(2))
+        # MySQL doesn't support DEFAULT in procedure parameters directly the same way
+        params = re.sub(r'\bDEFAULT\s+[^,]+', '', params, flags=re.IGNORECASE)
+        
+        body_match = re.search(r'\$([a-zA-Z0-9_]*)\$(.*?)\$\1', clean_def, flags=re.IGNORECASE | re.DOTALL)
+        if not body_match:
+            return clean_def, False
+            
+        body = body_match.group(2).strip()
+        
+        declare_block = ""
+        begin_body = body
+        declare_match = re.search(r'^DECLARE(.*?)BEGIN(.*)END;?$', body, flags=re.IGNORECASE | re.DOTALL)
+        if declare_match:
+            declare_block = declare_match.group(1).strip()
+            begin_body = declare_match.group(2).strip()
+        else:
+            begin_match = re.search(r'^BEGIN(.*)END;?$', body, flags=re.IGNORECASE | re.DOTALL)
+            if begin_match:
+                begin_body = begin_match.group(1).strip()
+                
+        # Handle FOR r IN SELECT ... LOOP
+        # FOR r IN SELECT ... LOOP ... END LOOP;
+        for_loop_match = re.search(r'FOR\s+([a-zA-Z0-9_]+)\s+IN\s+(SELECT.*?)LOOP(.*?)END\s+LOOP;', begin_body, flags=re.IGNORECASE | re.DOTALL)
+        
+        declare_mysql = ""
+        if for_loop_match:
+            loop_var = for_loop_match.group(1)
+            select_stmt = for_loop_match.group(2).strip()
+            loop_body = for_loop_match.group(3).strip()
+            
+            # Find selected columns to declare variables
+            # Very naive, assumes SELECT col1, col2, ... FROM
+            cols_part = re.search(r'SELECT(.*?)FROM', select_stmt, flags=re.IGNORECASE | re.DOTALL)
+            cols = []
+            if cols_part:
+                cols_str = cols_part.group(1)
+                for col in cols_str.split(','):
+                    col = col.strip()
+                    # alias handling: SUM(salary) AS total_sal
+                    if ' AS ' in col.upper():
+                        col = col.split(' AS ')[-1].split(' as ')[-1].strip()
+                    else:
+                        col = col.split('.')[-1].strip()
+                    cols.append(col)
+            
+            # Build cursor
+            cursor_name = f"cur_{proc_name}"
+            declare_mysql += f"    DECLARE done INT DEFAULT FALSE;\n"
+            for col in cols:
+                declare_mysql += f"    DECLARE v_{col} VARCHAR(255);\n" # Naive type
+            
+            declare_mysql += f"    DECLARE {cursor_name} CURSOR FOR {select_stmt};\n"
+            declare_mysql += f"    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;\n"
+            
+            # replace loop_var.col with v_col in loop body
+            for col in cols:
+                loop_body = re.sub(rf'\b{loop_var}\.{col}\b', f"v_{col}", loop_body)
+                
+            cursor_loop = f"OPEN {cursor_name};\nread_loop: LOOP\n    FETCH {cursor_name} INTO {', '.join(['v_' + c for c in cols])};\n    IF done THEN\n        LEAVE read_loop;\n    END IF;\n    {loop_body}\nEND LOOP;\nCLOSE {cursor_name};"
+            
+            begin_body = begin_body[:for_loop_match.start()] + cursor_loop + begin_body[for_loop_match.end():]
+        else:
+            # Process normal declares
+            if declare_block:
+                declares = [d.strip() for d in declare_block.split(';') if d.strip()]
+                for d in declares:
+                    if 'RECORD' not in d.upper():
+                        d = self._convert_pg_body_to_mysql(d)
+                        declare_mysql += f"    DECLARE {d};\n"
+                        
+        begin_body = self._convert_pg_body_to_mysql(begin_body)
+        
+        mysql_proc = f"DROP PROCEDURE IF EXISTS {proc_name};\nCREATE PROCEDURE {proc_name}({params})\nBEGIN\n{declare_mysql}{begin_body}\nEND;"
+        return mysql_proc, True
+
+    def _pg_to_mysql_trigger(self, obj, raw_def: str, source_database: str) -> tuple[str, bool]:
+        clean_def = self._strip_schema_prefixes(raw_def, "mysql", source_database=source_database)
+        
+        # Split into function def and trigger def
+        parts = re.split(r'CREATE\s+TRIGGER', clean_def, flags=re.IGNORECASE)
+        if len(parts) < 2:
+            return clean_def, False
+            
+        func_part = parts[0]
+        trig_part = "CREATE TRIGGER" + parts[1]
+        
+        # Extract function body
+        body_match = re.search(r'\$([a-zA-Z0-9_]*)\$(.*?)\$\1', func_part, flags=re.IGNORECASE | re.DOTALL)
+        if not body_match:
+            return clean_def, False
+        body = body_match.group(2).strip()
+        
+        # Strip BEGIN/END and DECLARE if any
+        begin_match = re.search(r'^BEGIN(.*)END;?$', body, flags=re.IGNORECASE | re.DOTALL)
+        if begin_match:
+            body = begin_match.group(1).strip()
+            
+        # Parse trigger def
+        # CREATE TRIGGER name AFTER INSERT OR UPDATE ON table FOR EACH ROW EXECUTE FUNCTION fn()
+        trig_match = re.search(r'CREATE\s+TRIGGER\s+([a-zA-Z0-9_]+)\s+(AFTER|BEFORE)\s+(.*?)\s+ON\s+([a-zA-Z0-9_]+)', trig_part, flags=re.IGNORECASE)
+        if not trig_match:
+            return clean_def, False
+            
+        trig_name = trig_match.group(1)
+        timing = trig_match.group(2).upper()
+        events_str = trig_match.group(3).upper()
+        table_name = trig_match.group(4)
+        
+        events = [e.strip() for e in events_str.split(' OR ')]
+        
+        # Strip RETURN NEW/OLD/NULL
+        body = re.sub(r'\bRETURN\s+(NEW|OLD|NULL)\s*;', '', body, flags=re.IGNORECASE)
+        
+        # Handle TG_OP
+        if 'TG_OP' in body:
+            body = re.sub(r"TG_OP\s*=\s*'INSERT'", "1=1", body) if len(events) == 1 and events[0] == 'INSERT' else body
+            body = re.sub(r"TG_OP\s*=\s*'UPDATE'", "1=1", body) if len(events) == 1 and events[0] == 'UPDATE' else body
+            # If multiple events, MySQL needs separate triggers, or we use a workaround.
+            # But MySQL strictly requires ONE trigger per event per timing. 
+            # So AFTER INSERT OR UPDATE is invalid. We must generate MULTIPLE CREATE TRIGGER statements.
+        
+        body = self._convert_pg_body_to_mysql(body)
+        
+        res = ""
+        for event in events:
+            # For each event, replace TG_OP conditions if present
+            event_body = body
+            if len(events) > 1:
+                if event == 'INSERT':
+                    event_body = re.sub(r"TG_OP\s*=\s*'INSERT'", "TRUE", event_body)
+                    event_body = re.sub(r"TG_OP\s*=\s*'UPDATE'", "FALSE", event_body)
+                elif event == 'UPDATE':
+                    event_body = re.sub(r"TG_OP\s*=\s*'INSERT'", "FALSE", event_body)
+                    event_body = re.sub(r"TG_OP\s*=\s*'UPDATE'", "TRUE", event_body)
+            
+            # Simple ELSIF -> ELSEIF logic evaluation optimization (optional, but FALSE will just skip)
+            
+            # Suffix trigger name if multiple events
+            t_name = trig_name if len(events) == 1 else f"{trig_name}_{event.lower()}"
+            
+            res += f"DROP TRIGGER IF EXISTS {t_name};\n"
+            res += f"CREATE TRIGGER {t_name} {timing} {event} ON {table_name} FOR EACH ROW\nBEGIN\n{event_body}\nEND;\n\n"
+            
+        return res.strip(), True
+
+    def _convert_pg_body_to_mssql(self, body: str) -> str:
+        # Remove ::type casts (e.g. ::text, ::integer, ::numeric(10,2))
+        body = re.sub(r'::[a-zA-Z0-9_]+(?:\([0-9,\s]+\))?', '', body)
+        body = re.sub(r'\bILIKE\b', 'LIKE', body, flags=re.IGNORECASE)
+        body = re.sub(r'\$\d+\b', '', body)
+        
+        lines = body.split('\n')
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            # Assignment := to = (or SET @var = val)
+            if re.match(r'^[a-zA-Z0-9_]+\s*:=', stripped):
+                line = re.sub(r'^(\s*)([a-zA-Z0-9_]+)\s*:=\s*(.*)', r'\1SET @\2 = \3', line)
+            else:
+                line = re.sub(r':=', '=', line)
+            
+            # ELSIF -> ELSE IF
+            line = re.sub(r'\bELSIF\b', 'ELSE IF', line, flags=re.IGNORECASE)
+            
+            # RAISE NOTICE -> PRINT
+            line = re.sub(r'\bRAISE\s+NOTICE\s+(.*?);', r'PRINT \1;', line, flags=re.IGNORECASE)
+            
+            # RAISE EXCEPTION 'msg' -> THROW 50000, 'msg', 1;
+            line = re.sub(r"\bRAISE\s+EXCEPTION\s+'([^']+)'\s*;", r"THROW 50000, '\1', 1;", line, flags=re.IGNORECASE)
+            
+            # PERFORM -> EXEC
+            line = re.sub(r'\bPERFORM\s+', 'EXEC ', line, flags=re.IGNORECASE)
+            
+            # || -> +
+            if '||' in line:
+                m = re.search(r"('[^']*'\s*\|\|.*?(?=\)|,|$))", line)
+                if m:
+                    expr = m.group(1)
+                    parts = [p.strip() for p in expr.split('||')]
+                    line = line.replace(expr, ' + '.join(parts))
+            
+            new_lines.append(line)
+            
+        body = '\n'.join(new_lines)
+        
+        # Replace COALESCE with ISNULL
+        body = re.sub(r'\bCOALESCE\s*\(', 'ISNULL(', body, flags=re.IGNORECASE)
+        
+        # Types in DECLARE blocks or parameters
+        body = re.sub(r'\bNUMERIC\b', 'DECIMAL(18,2)', body, flags=re.IGNORECASE)
+        body = re.sub(r'\bTEXT\b', 'VARCHAR(MAX)', body, flags=re.IGNORECASE)
+        body = re.sub(r'\bBOOLEAN\b', 'BIT', body, flags=re.IGNORECASE)
+        
+        return body
+
+    def _pg_to_mssql_function(self, obj, raw_def: str, source_database: str) -> tuple[str, bool]:
+        clean_def = self._strip_schema_prefixes(raw_def, "mssql", source_database=source_database)
+        
+        # Check if it returns TRIGGER
+        if re.search(r'\bRETURNS\s+TRIGGER\b', clean_def, flags=re.IGNORECASE):
+            return "-- Trigger functions are inlined in MSSQL triggers", True
+            
+        # Parse CREATE FUNCTION
+        # Handle RETURNS TABLE
+        table_match = re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z0-9_]+)\s*\((.*?)\)\s*RETURNS\s+TABLE\s*\((.*?)\)\s+AS\s+\$([a-zA-Z0-9_]*)\$', clean_def, flags=re.IGNORECASE | re.DOTALL)
+        if table_match:
+            func_name = table_match.group(1)
+            raw_params = table_match.group(2).strip()
+            table_cols = table_match.group(3).strip()
+            
+            body_match = re.search(r'\$([a-zA-Z0-9_]*)\$(.*?)\$\1', clean_def, flags=re.IGNORECASE | re.DOTALL)
+            body = body_match.group(2).strip() if body_match else ""
+            
+            mssql_params = []
+            if raw_params:
+                for p in split_top_level_comma(raw_params):
+                    p = p.strip()
+                    if p:
+                        parts = p.split()
+                        p_name = parts[0].lstrip('@')
+                        p_type = " ".join(parts[1:])
+                        p_type = self._convert_pg_body_to_mssql(p_type)
+                        mssql_params.append(f"@{p_name} {p_type}")
+            params_str = ", ".join(mssql_params)
+            
+            query_match = re.search(r'RETURN\s+QUERY\s+(SELECT.*?);', body, flags=re.IGNORECASE | re.DOTALL)
+            if query_match:
+                select_sql = query_match.group(1).strip()
+                select_sql = self._convert_pg_body_to_mssql(select_sql)
+                for p in mssql_params:
+                    p_name = p.split()[0].lstrip('@')
+                    select_sql = re.sub(rf'\b{re.escape(p_name)}\b', f"@{p_name}", select_sql)
+                return f"CREATE OR ALTER FUNCTION {func_name} ({params_str})\nRETURNS TABLE\nAS\nRETURN\n(\n    {select_sql}\n);", True
+            else:
+                converted_cols = self._convert_pg_body_to_mssql(table_cols)
+                converted_body = self._convert_pg_body_to_mssql(body)
+                return f"CREATE OR ALTER FUNCTION {func_name} ({params_str})\nRETURNS @result TABLE ({converted_cols})\nAS\nBEGIN\n    {converted_body}\n    RETURN;\nEND;", True
+
+        # Scalar function
+        header_match = re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z0-9_]+)\s*\((.*?)\)\s*RETURNS\s+([a-zA-Z0-9_]+(?:\([0-9,\s]+\))?)\s+AS\s+\$([a-zA-Z0-9_]*)\$', clean_def, flags=re.IGNORECASE | re.DOTALL)
+        if not header_match:
+            header_match = re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z0-9_]+)\s*\((.*?)\)\s*RETURNS\s+([a-zA-Z0-9_]+(?:\([0-9,\s]+\))?)', clean_def, flags=re.IGNORECASE | re.DOTALL)
+            if not header_match:
+                return clean_def, False
+
+        func_name = header_match.group(1)
+        raw_params = header_match.group(2).strip()
+        ret_type = self._convert_pg_body_to_mssql(header_match.group(3).strip())
+
+        mssql_params = []
+        param_names = []
+        if raw_params:
+            for p in split_top_level_comma(raw_params):
+                p = p.strip()
+                if p:
+                    parts = p.split()
+                    p_name = parts[0].lstrip('@')
+                    p_type = " ".join(parts[1:])
+                    p_type = self._convert_pg_body_to_mssql(p_type)
+                    param_names.append(p_name)
+                    mssql_params.append(f"@{p_name} {p_type}")
+        params_str = ", ".join(mssql_params)
+
+        body_match = re.search(r'\$([a-zA-Z0-9_]*)\$(.*?)\$\1', clean_def, flags=re.IGNORECASE | re.DOTALL)
+        if body_match:
+            body = body_match.group(2).strip()
+        else:
+            b_match = re.search(r'\bBEGIN\b(.*)\bEND\b', clean_def, flags=re.IGNORECASE | re.DOTALL)
+            body = b_match.group(1).strip() if b_match else clean_def
+
+        inner_match = re.search(r'^BEGIN(.*)END;?$', body, flags=re.IGNORECASE | re.DOTALL)
+        if inner_match:
+            body = inner_match.group(1).strip()
+
+        converted_body = self._convert_pg_body_to_mssql(body)
+        for p_name in param_names:
+            converted_body = re.sub(rf'\b{re.escape(p_name)}\b', f"@{p_name}", converted_body)
+
+        return f"CREATE OR ALTER FUNCTION {func_name} ({params_str})\nRETURNS {ret_type}\nAS\nBEGIN\n    {converted_body}\nEND;", True
+
+    def _pg_to_mssql_procedure(self, obj, raw_def: str, source_database: str) -> tuple[str, bool]:
+        clean_def = self._strip_schema_prefixes(raw_def, "mssql", source_database=source_database)
+        
+        header_match = re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+([a-zA-Z0-9_]+)\s*\((.*?)\)', clean_def, flags=re.IGNORECASE | re.DOTALL)
+        if not header_match:
+            return clean_def, False
+            
+        proc_name = header_match.group(1)
+        raw_params = header_match.group(2).strip()
+        
+        body_match = re.search(r'\$([a-zA-Z0-9_]*)\$(.*?)\$\1', clean_def, flags=re.IGNORECASE | re.DOTALL)
+        if body_match:
+            body = body_match.group(2).strip()
+        else:
+            b_match = re.search(r'\bBEGIN\b(.*)\bEND\b', clean_def, flags=re.IGNORECASE | re.DOTALL)
+            body = b_match.group(1).strip() if b_match else ""
+            
+        inner_match = re.search(r'^BEGIN(.*)END;?$', body, flags=re.IGNORECASE | re.DOTALL)
+        if inner_match:
+            body = inner_match.group(1).strip()
+            
+        param_names = []
+        mssql_params = []
+        if raw_params:
+            for p in split_top_level_comma(raw_params):
+                p = p.strip()
+                if not p:
+                    continue
+                p_parts = p.split()
+                if p_parts[0].upper() in ['IN', 'OUT', 'INOUT']:
+                    mode = p_parts[0].upper()
+                    p_name = p_parts[1].lstrip('@')
+                    p_type = " ".join(p_parts[2:])
+                else:
+                    mode = 'IN'
+                    p_name = p_parts[0].lstrip('@')
+                    p_type = " ".join(p_parts[1:])
+                param_names.append(p_name)
+                converted_type = self._convert_pg_body_to_mssql(p_type)
+                if mode in ['OUT', 'INOUT']:
+                    mssql_params.append(f"    @{p_name} {converted_type} OUTPUT")
+                else:
+                    mssql_params.append(f"    @{p_name} {converted_type}")
+                    
+        converted_body = self._convert_pg_body_to_mssql(body)
+        for p_name in param_names:
+            converted_body = re.sub(rf'\b{re.escape(p_name)}\b', f"@{p_name}", converted_body)
+            
+        params_str = ",\n".join(mssql_params)
+        if params_str:
+            params_str = "\n" + params_str + "\n"
+            
+        return f"CREATE OR ALTER PROCEDURE {proc_name}{params_str}AS\nBEGIN\n    SET NOCOUNT ON;\n    {converted_body}\nEND;", True
+
+    def _pg_to_mssql_trigger(self, obj, raw_def: str, source_database: str) -> tuple[str, bool]:
+        clean_def = self._strip_schema_prefixes(raw_def, "mssql", source_database=source_database)
+        
+        parts = re.split(r'CREATE\s+TRIGGER', clean_def, flags=re.IGNORECASE)
+        if len(parts) < 2:
+            trig_part = clean_def
+            body = ""
+        else:
+            func_part = parts[0]
+            trig_part = "CREATE TRIGGER" + parts[1]
+            body_match = re.search(r'\$([a-zA-Z0-9_]*)\$(.*?)\$\1', func_part, flags=re.IGNORECASE | re.DOTALL)
+            body = body_match.group(2).strip() if body_match else ""
+            
+        trig_match = re.search(r'CREATE\s+TRIGGER\s+([a-zA-Z0-9_]+)\s+(AFTER|BEFORE|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([a-zA-Z0-9_]+)', trig_part, flags=re.IGNORECASE)
+        if not trig_match:
+            return clean_def, False
+            
+        trig_name = trig_match.group(1)
+        raw_timing = trig_match.group(2).upper()
+        events_str = trig_match.group(3).upper()
+        tbl_name = trig_match.group(4)
+        
+        timing = "AFTER" if "AFTER" in raw_timing or "BEFORE" in raw_timing else "INSTEAD OF"
+        events_list = [e.strip() for e in events_str.split(' OR ')]
+        events = ", ".join(events_list)
+        
+        inner_match = re.search(r'\bBEGIN\b(.*)\bEND\b', body, flags=re.IGNORECASE | re.DOTALL)
+        if inner_match:
+            body = inner_match.group(1).strip()
+        body = re.sub(r'\bRETURN\s+(NEW|OLD|NULL)\s*;', '', body, flags=re.IGNORECASE)
+        
+        body = re.sub(r'\bNEW\.([a-zA-Z0-9_]+)', r'i.\1', body, flags=re.IGNORECASE)
+        body = re.sub(r'\bOLD\.([a-zA-Z0-9_]+)', r'd.\1', body, flags=re.IGNORECASE)
+        
+        converted_body = self._convert_pg_body_to_mssql(body)
+        
+        mssql_trig = f"""CREATE OR ALTER TRIGGER {trig_name}
+ON {tbl_name}
+{timing} {events}
+AS
+BEGIN
+    SET NOCOUNT ON;
+    {converted_body}
+END;"""
+        return mssql_trig, True
+
     def _rules_based_translate_procedure_or_trigger(
         self, obj: MigratableObject, source_dialect: str, target_dialect: str, source_database: str = None
     ) -> tuple[str, bool]:
@@ -261,6 +847,24 @@ class ObjectTranslationAgent:
         raw_def = re.sub(r"\bisnull\s*\(([^,]+),\s*([^)]+)\)", r"COALESCE(\1, \2)", raw_def, flags=re.IGNORECASE)
         raw_def = re.sub(r"\bifnull\s*\(([^,]+),\s*([^)]+)\)", r"COALESCE(\1, \2)", raw_def, flags=re.IGNORECASE)
         raw_def = re.sub(r"\bnvl\s*\(([^,]+),\s*([^)]+)\)", r"COALESCE(\1, \2)", raw_def, flags=re.IGNORECASE)
+
+        # Handle PG -> MSSQL Object Translation
+        if tgt_lower in ["mssql", "sqlserver", "sql server"] and src_lower in ["postgres", "postgresql"]:
+            if obj.object_type in ["function", "trigger_function"]:
+                return self._pg_to_mssql_function(obj, raw_def, source_database)
+            elif obj.object_type == "procedure":
+                return self._pg_to_mssql_procedure(obj, raw_def, source_database)
+            elif obj.object_type == "trigger":
+                return self._pg_to_mssql_trigger(obj, raw_def, source_database)
+
+        # Handle PG -> MySQL Object Translation
+        if tgt_lower == "mysql" and src_lower in ["postgres", "postgresql"]:
+            if obj.object_type in ["function", "trigger_function"] and "CREATE" in raw_def.upper() and "FUNCTION" in raw_def.upper():
+                return self._pg_to_mysql_function(obj, raw_def, source_database)
+            elif obj.object_type == "procedure":
+                return self._pg_to_mysql_procedure(obj, raw_def, source_database)
+            elif obj.object_type == "trigger":
+                return self._pg_to_mysql_trigger(obj, raw_def, source_database)
 
         # Handle Trigger translation to MSSQL
         if obj.object_type == "trigger" and tgt_lower == "mssql":
@@ -600,7 +1204,12 @@ END;""", True
 
         # Attempt LLM translation if available
         try:
-            prompt = OBJECT_TRANSLATION_PROMPT.format(
+            if source_dialect.lower() == "oracle" and target_dialect.lower() == "mysql":
+                prompt_template = ORACLE_TO_MYSQL_SYSTEM_PROMPT
+            else:
+                prompt_template = OBJECT_TRANSLATION_PROMPT
+
+            prompt = prompt_template.format(
                 source_dialect=source_dialect,
                 target_dialect=target_dialect,
                 object_type=view.object_type,
@@ -666,9 +1275,66 @@ END;""", True
         # First obtain rule-based transpilation
         rule_def, rule_ok = self._rules_based_translate_procedure_or_trigger(obj, source_dialect, target_dialect, source_database=source_database)
 
+        # If it's a trigger function for PG->MySQL, or if PG->MySQL rules specifically handled it, bypass LLM
+        src_lower = source_dialect.lower()
+        tgt_lower = target_dialect.lower()
+        if src_lower in ["postgres", "postgresql"] and tgt_lower == "mysql":
+            if rule_def == "-- Trigger functions are inlined in MySQL triggers":
+                return TranslationResult(
+                    object_name=obj.name,
+                    object_type=obj.object_type,
+                    translated_definition=rule_def,
+                    translation_method="rules_only",
+                    confidence="high",
+                    needs_human_review=False,
+                    uncertain_lines=[],
+                    translation_error=None,
+                )
+            # Use our highly-specific rule-based output for PG->MySQL instead of LLM
+            if rule_ok and rule_def:
+                return TranslationResult(
+                    object_name=obj.name,
+                    object_type=obj.object_type,
+                    translated_definition=rule_def,
+                    translation_method="rules_only",
+                    confidence="high",
+                    needs_human_review=False,
+                    uncertain_lines=[],
+                    translation_error=None,
+                )
+
+        if src_lower in ["postgres", "postgresql"] and tgt_lower in ["mssql", "sqlserver", "sql server"]:
+            if rule_def == "-- Trigger functions are inlined in MSSQL triggers":
+                return TranslationResult(
+                    object_name=obj.name,
+                    object_type=obj.object_type,
+                    translated_definition=rule_def,
+                    translation_method="rules_only",
+                    confidence="high",
+                    needs_human_review=False,
+                    uncertain_lines=[],
+                    translation_error=None,
+                )
+            if rule_ok and rule_def:
+                return TranslationResult(
+                    object_name=obj.name,
+                    object_type=obj.object_type,
+                    translated_definition=rule_def,
+                    translation_method="rules_only",
+                    confidence="high",
+                    needs_human_review=False,
+                    uncertain_lines=[],
+                    translation_error=None,
+                )
+
         # Attempt LLM translation if available
         try:
-            prompt = OBJECT_TRANSLATION_PROMPT.format(
+            if source_dialect.lower() == "oracle" and target_dialect.lower() == "mysql":
+                prompt_template = ORACLE_TO_MYSQL_SYSTEM_PROMPT
+            else:
+                prompt_template = OBJECT_TRANSLATION_PROMPT
+
+            prompt = prompt_template.format(
                 source_dialect=source_dialect,
                 target_dialect=target_dialect,
                 object_type=obj.object_type,

@@ -80,6 +80,12 @@ class TranslationResult(BaseModel):
 from pydantic import field_validator
 import re
 
+ORACLE_SYSTEM_PREFIXES = (
+    'AQ$', 'LOGMNR$', 'LOGSTDBY$',
+    'MVIEW$', 'REPL_', 'GG_', 'BIN$',
+    'DR$', 'SYS_'
+)
+
 class MigrationOptions(BaseModel):
     selected_tables: list[str] = []
     migrate_all_tables: bool = True
@@ -98,9 +104,19 @@ class MigrationOptions(BaseModel):
     def validate_identifiers(cls, v: list[str] | None) -> list[str]:
         if v is None:
             return []
-        for item in v:
-            if not re.match(r"^[a-zA-Z0-9_.\-\s\[\]\"`]+$", item):
-                raise ValueError(f"Invalid SQL identifier: {item}")
+        for name in v:
+            # SQL identifier validation
+            if not re.match(r'^[a-zA-Z0-9_#][a-zA-Z0-9_$#.]*$', name):
+                raise ValueError(f"Invalid SQL identifier: {name}")
+                
+            # System object validation
+            upper = name.upper()
+            for prefix in ORACLE_SYSTEM_PREFIXES:
+                if upper.startswith(prefix) or '$' in upper:
+                    raise ValueError(
+                        f"'{name}' appears to be an Oracle system object and cannot be migrated. "
+                        f"Deselect system objects in the Object Picker."
+                    )
         return v
 
     migrate_data: bool = True

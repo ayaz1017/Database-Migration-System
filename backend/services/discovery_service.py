@@ -4,6 +4,7 @@ Connects and discovers schema strictly via system catalogs.
 """
 
 from typing import Any
+import re
 
 import mysql.connector
 import oracledb
@@ -265,8 +266,21 @@ class DiscoveryService:
         cursor.execute("""
             SELECT table_name, num_rows 
             FROM ALL_TABLES 
-            WHERE owner = :schema
+            WHERE owner = UPPER(:schema)
+            AND table_name NOT LIKE '%$%'
             AND table_name NOT LIKE 'BIN$%'
+            AND table_name NOT IN ('HELP', 'DUAL', 'PLAN_TABLE')
+            AND owner NOT IN (
+                'SYS', 'SYSTEM', 'OUTLN', 'DBSNMP',
+                'WMSYS', 'XDB', 'CTXSYS', 'MDSYS',
+                'ORDSYS', 'EXFSYS', 'DMSYS', 'SYSMAN',
+                'APEX_040200', 'FLOWS_FILES',
+                'APEX_PUBLIC_USER', 'ANONYMOUS',
+                'ORDPLUGINS', 'SI_INFORMTN_SCHEMA',
+                'OLAPSYS', 'MDDATA', 'SPATIAL_WFS_ADMIN_USR',
+                'SPATIAL_CSW_ADMIN_USR', 'LBACSYS',
+                'PERFSTAT', 'OWBSYS', 'MGMT_VIEW'
+            )
         """, schema=schema)
         
         tables = {}
@@ -697,8 +711,21 @@ class DiscoveryService:
         cursor.execute("""
             SELECT table_name, num_rows 
             FROM ALL_TABLES 
-            WHERE owner = :schema
+            WHERE owner = UPPER(:schema)
+            AND table_name NOT LIKE '%$%'
             AND table_name NOT LIKE 'BIN$%'
+            AND table_name NOT IN ('HELP', 'DUAL', 'PLAN_TABLE')
+            AND owner NOT IN (
+                'SYS', 'SYSTEM', 'OUTLN', 'DBSNMP',
+                'WMSYS', 'XDB', 'CTXSYS', 'MDSYS',
+                'ORDSYS', 'EXFSYS', 'DMSYS', 'SYSMAN',
+                'APEX_040200', 'FLOWS_FILES',
+                'APEX_PUBLIC_USER', 'ANONYMOUS',
+                'ORDPLUGINS', 'SI_INFORMTN_SCHEMA',
+                'OLAPSYS', 'MDDATA', 'SPATIAL_WFS_ADMIN_USR',
+                'SPATIAL_CSW_ADMIN_USR', 'LBACSYS',
+                'PERFSTAT', 'OWBSYS', 'MGMT_VIEW'
+            )
         """, schema=schema)
         
         tables_data = cursor.fetchall()
@@ -779,8 +806,8 @@ class DiscoveryService:
             for fk in cursor.fetchall():
                 table_info["foreign_keys"].append({
                     "column": fk[0],
-                    "referenced_table": fk[1],
-                    "referenced_column": fk[2],
+                    "references_table": fk[1],
+                    "references_column": fk[2],
                 })
                 
             result["tables"].append(table_info)
@@ -1243,7 +1270,19 @@ class DiscoveryService:
         cursor.execute("""
             SELECT view_name, text
             FROM ALL_VIEWS
-            WHERE owner = :schema
+            WHERE owner = UPPER(:schema)
+            AND view_name NOT LIKE '%$%'
+            AND owner NOT IN (
+                'SYS', 'SYSTEM', 'OUTLN', 'DBSNMP',
+                'WMSYS', 'XDB', 'CTXSYS', 'MDSYS',
+                'ORDSYS', 'EXFSYS', 'DMSYS', 'SYSMAN',
+                'APEX_040200', 'FLOWS_FILES',
+                'APEX_PUBLIC_USER', 'ANONYMOUS',
+                'ORDPLUGINS', 'SI_INFORMTN_SCHEMA',
+                'OLAPSYS', 'MDDATA', 'SPATIAL_WFS_ADMIN_USR',
+                'SPATIAL_CSW_ADMIN_USR', 'LBACSYS',
+                'PERFSTAT', 'OWBSYS', 'MGMT_VIEW'
+            )
         """, schema=schema)
         for row in cursor.fetchall():
             text = row[1].read() if hasattr(row[1], 'read') else (row[1] or "")
@@ -1259,8 +1298,20 @@ class DiscoveryService:
         cursor.execute("""
             SELECT object_name, object_type, status
             FROM ALL_OBJECTS
-            WHERE owner = :schema
+            WHERE owner = UPPER(:schema)
+            AND object_name NOT LIKE '%$%'
             AND object_type IN ('PROCEDURE', 'FUNCTION', 'PACKAGE', 'PACKAGE BODY')
+            AND owner NOT IN (
+                'SYS', 'SYSTEM', 'OUTLN', 'DBSNMP',
+                'WMSYS', 'XDB', 'CTXSYS', 'MDSYS',
+                'ORDSYS', 'EXFSYS', 'DMSYS', 'SYSMAN',
+                'APEX_040200', 'FLOWS_FILES',
+                'APEX_PUBLIC_USER', 'ANONYMOUS',
+                'ORDPLUGINS', 'SI_INFORMTN_SCHEMA',
+                'OLAPSYS', 'MDDATA', 'SPATIAL_WFS_ADMIN_USR',
+                'SPATIAL_CSW_ADMIN_USR', 'LBACSYS',
+                'PERFSTAT', 'OWBSYS', 'MGMT_VIEW'
+            )
         """, schema=schema)
         
         routines = cursor.fetchall()
@@ -1290,8 +1341,20 @@ class DiscoveryService:
                    triggering_event, table_name,
                    trigger_body
             FROM ALL_TRIGGERS
-            WHERE owner = :schema
+            WHERE owner = UPPER(:schema)
+            AND trigger_name NOT LIKE '%$%'
             AND base_object_type = 'TABLE'
+            AND owner NOT IN (
+                'SYS', 'SYSTEM', 'OUTLN', 'DBSNMP',
+                'WMSYS', 'XDB', 'CTXSYS', 'MDSYS',
+                'ORDSYS', 'EXFSYS', 'DMSYS', 'SYSMAN',
+                'APEX_040200', 'FLOWS_FILES',
+                'APEX_PUBLIC_USER', 'ANONYMOUS',
+                'ORDPLUGINS', 'SI_INFORMTN_SCHEMA',
+                'OLAPSYS', 'MDDATA', 'SPATIAL_WFS_ADMIN_USR',
+                'SPATIAL_CSW_ADMIN_USR', 'LBACSYS',
+                'PERFSTAT', 'OWBSYS', 'MGMT_VIEW'
+            )
         """, schema=schema)
         
         for row in cursor.fetchall():

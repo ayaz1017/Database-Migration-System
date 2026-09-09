@@ -124,31 +124,49 @@ export default function ObjectTranslationsViewer({ objectTranslations = [] }) {
                     exit={{ height: 0, opacity: 0 }}
                     className="overflow-hidden border-t border-white/10 bg-black/60 p-4 space-y-3"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono text-gray-400 uppercase tracking-wider">Target SQL / DDL Definition</span>
-                      {ddl && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleCopy(ddl, idx)
-                          }}
-                          className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 text-xs font-mono text-gray-300 border border-white/10 flex items-center space-x-1.5 transition-colors"
-                        >
-                          {copiedIndex === idx ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          <span>{copiedIndex === idx ? 'Copied' : 'Copy DDL'}</span>
-                        </button>
-                      )}
-                    </div>
-
-                    {ddl ? (
-                      <pre className="p-4 rounded-xl bg-[#09090d] border border-white/10 font-mono text-xs text-purple-200 overflow-x-auto whitespace-pre-wrap leading-relaxed">
-                        {ddl}
-                      </pre>
-                    ) : (
-                      <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 font-mono text-xs">
-                        No DDL definition generated. Error: {error || 'Unknown error'}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex flex-col space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-mono text-gray-400 uppercase tracking-wider">Source DDL (Original)</span>
+                        </div>
+                        {item.source_definition ? (
+                          <pre className="p-4 rounded-xl bg-[#09090d] border border-white/10 font-mono text-xs text-blue-200 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                            {item.source_definition}
+                          </pre>
+                        ) : (
+                          <div className="p-3 rounded-lg bg-gray-500/10 border border-gray-500/20 text-gray-400 font-mono text-xs">
+                            No source definition available.
+                          </div>
+                        )}
                       </div>
-                    )}
+
+                      <div className="flex flex-col space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-mono text-gray-400 uppercase tracking-wider">Target SQL / DDL Definition</span>
+                          {item.translated_definition && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleCopy(item.translated_definition, idx)
+                              }}
+                              className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 text-xs font-mono text-gray-300 border border-white/10 flex items-center space-x-1.5 transition-colors"
+                            >
+                              {copiedIndex === idx ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              <span>{copiedIndex === idx ? 'Copied' : 'Copy DDL'}</span>
+                            </button>
+                          )}
+                        </div>
+                        {item.translated_definition ? (
+                          <pre className="p-4 rounded-xl bg-[#09090d] border border-white/10 font-mono text-xs text-purple-200 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                            {item.translated_definition}
+                          </pre>
+                        ) : (
+                          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 font-mono text-xs">
+                            No target DDL generated. {error ? `Error: ${error}` : ''}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>

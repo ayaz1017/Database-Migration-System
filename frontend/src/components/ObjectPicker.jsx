@@ -318,6 +318,23 @@ const ObjectPicker = ({ sourceConfig, options = {}, onOptionsChange }) => {
         </div>
       </div>
 
+      {sourceConfig.db_type === 'oracle' && (
+        <div className="bg-warning/10 border border-warning/20 text-warning px-4 py-3 rounded-lg mb-6 text-xs font-mono flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center space-x-2">
+            <span>⚠️ Showing user objects only. Oracle system objects (AQ$, LOGMNR$, MVIEW$, etc.) are automatically excluded.</span>
+          </div>
+          <label className="flex items-center space-x-2 cursor-pointer shrink-0 bg-warning/20 px-3 py-1.5 rounded-md hover:bg-warning/30 transition-colors border border-warning/30">
+            <input 
+              type="checkbox" 
+              className="accent-warning bg-bg-sunken border-warning"
+              checked={options.show_system_objects || false}
+              onChange={e => onOptionsChange({...options, show_system_objects: e.target.checked})}
+            />
+            <span className="text-warning text-xs font-bold uppercase tracking-wider">Show system objects</span>
+          </label>
+        </div>
+      )}
+
       <div className="flex flex-col lg:flex-row gap-6 w-full flex-1 min-h-0">
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col min-w-0 bg-bg-raised border border-border-default rounded-xl shadow-md overflow-hidden relative">
@@ -364,6 +381,12 @@ const ObjectPicker = ({ sourceConfig, options = {}, onOptionsChange }) => {
                 <motion.div layoutId="activeTabIndicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
               )}
             </button>
+          </div>
+
+          <div className="px-5 pt-3 pb-1 bg-bg-raised flex items-center justify-between text-xs text-text-secondary font-mono">
+            <span>
+              {objects.views.length} views &bull; {objects.procedures.length} procedures &bull; {objects.triggers.length} triggers
+            </span>
           </div>
 
           {/* Grid Toolbar */}
@@ -594,7 +617,13 @@ const ObjectPicker = ({ sourceConfig, options = {}, onOptionsChange }) => {
               (activeTab === 'triggers' && filteredTriggers.length === 0)) && (
               <div className="flex flex-col items-center justify-center py-20 text-muted-slate space-y-3">
                 <Search className="w-8 h-8 opacity-20" />
-                <div className="text-xs font-mono">No items found matching "{searchTerm}"</div>
+                <div className="text-xs font-mono">
+                  {searchTerm 
+                    ? `No items found matching "${searchTerm}"` 
+                    : (sourceConfig.db_type === 'oracle' 
+                        ? `No user-defined ${activeTab} found. Oracle system ${activeTab} are excluded from migration.` 
+                        : `No ${activeTab} found.`)}
+                </div>
               </div>
             )}
           </div>

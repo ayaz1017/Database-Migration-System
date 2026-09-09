@@ -1,3 +1,4 @@
+import re
 """
 Schema Agent for Universal Migration Engine.
 Generates DDL deterministically using the Migration Matrix.
@@ -257,7 +258,12 @@ END;"""
         # Add edges for FKs (from_table -> references -> to_table)
         for tm in all_tables_metadata:
             from_table = tm["name"]
-            for to_table in tm.get("has_foreign_keys_to", []):
+            
+            refs = tm.get("has_foreign_keys_to")
+            if not refs:
+                refs = [fk["references_table"] for fk in tm.get("foreign_keys", [])]
+                
+            for to_table in refs:
                 if to_table in graph:
                     graph.add_edge(from_table, to_table)
 

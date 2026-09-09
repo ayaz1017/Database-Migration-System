@@ -165,15 +165,11 @@ export default function Landing() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="mb-6 inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-zinc-900/90 border border-zinc-800 text-xs font-mono text-zinc-300 shadow-sm hover:border-zinc-700 transition-colors"
+            className="mb-6 inline-flex items-center space-x-2.5 px-3.5 py-1.5 rounded-full bg-zinc-900/90 border border-zinc-800 text-xs font-mono text-zinc-300 shadow-sm"
           >
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-            </span>
-            <span className="text-zinc-300 font-semibold">Engine v2.4</span>
-            <span className="text-zinc-600">|</span>
-            <span className="text-zinc-400">Zero-Loss Keyset Chunking & Oracle 21c Engine</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            <span className="text-zinc-200 font-semibold">Engine v2.4</span>
+            <span className="text-zinc-500">Keyset streaming and Oracle 21c support</span>
           </motion.div>
 
           {/* Master Headline */}
@@ -181,12 +177,9 @@ export default function Landing() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
-            className="font-sans text-[36px] sm:text-[46px] md:text-[54px] font-bold text-white tracking-tight leading-[1.12] mb-6 max-w-4xl"
+            className="font-sans text-[34px] sm:text-[44px] md:text-[50px] font-bold text-white tracking-tight leading-[1.14] mb-6 max-w-4xl"
           >
-            Deterministic database migration. <br className="hidden sm:block" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-zinc-100 via-indigo-200 to-indigo-400">
-              Zero downtime. Zero guesswork.
-            </span>
+            Parallel keyset streaming and compiled AST schema translation for database cutovers.
           </motion.h1>
 
           {/* Subtitle */}
@@ -196,7 +189,7 @@ export default function Landing() {
             transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
             className="font-sans text-base md:text-lg text-zinc-400 max-w-2xl mb-8 leading-relaxed"
           >
-            Compile-time DDL translation across PostgreSQL, MySQL, SQL Server, and Oracle. Stream gigabytes with keyset chunking, automated FK graph sequencing, and byte-for-byte checksum parity.
+            Compile DDL across PostgreSQL, MySQL, SQL Server, and Oracle. Stream large datasets with deterministic keyset chunking, automated foreign key DAG sequencing, and SHA-256 parity verification.
           </motion.p>
 
           {/* CTAs */}
@@ -211,7 +204,6 @@ export default function Landing() {
               className="w-full sm:w-auto px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-sans text-sm font-semibold transition-all shadow-sm flex items-center justify-center space-x-2"
             >
               <span>Start New Migration</span>
-              <ArrowRight className="w-4 h-4" />
             </Link>
             <Link 
               to="/sandbox" 
@@ -296,9 +288,14 @@ export default function Landing() {
 
                 {/* Right Status / Control */}
                 <div className="flex items-center space-x-2.5">
-                  <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded bg-zinc-950/80 border border-zinc-800 text-[11px] font-mono text-zinc-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>CDC Active • Lag: 2.1ms</span>
+                  <div className="hidden sm:flex items-center space-x-2 text-[11px] font-mono">
+                    <span className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span>CDC replication active</span>
+                    </span>
+                    <span className="px-2.5 py-1 rounded bg-zinc-950/80 border border-zinc-800 text-zinc-400">
+                      2.1ms stream lag
+                    </span>
                   </div>
 
                   <button 
@@ -325,7 +322,7 @@ export default function Landing() {
                             <span className="text-white font-semibold text-sm">Enterprise Core Cluster Migration</span>
                             <span className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-300 text-[10px] font-mono">JOB-8941</span>
                           </div>
-                          <p className="text-zinc-400 text-xs mt-0.5">PostgreSQL 16 (Primary us-east-1) ➔ MySQL 8.0 (Aurora Multi-AZ)</p>
+                          <p className="text-zinc-400 text-xs mt-0.5">PostgreSQL 16 (Primary us-east-1) to MySQL 8.0 (Aurora Multi-AZ)</p>
                         </div>
                         <span className="text-emerald-400 font-mono text-xs font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                           {simulating ? 'Streaming (8 Keyset Workers)' : 'Paused'}
@@ -368,13 +365,13 @@ export default function Landing() {
                         </div>
                         <div className="p-2.5 rounded bg-zinc-900/60 border border-zinc-800">
                           <div className="text-zinc-400 text-[10px]">audit_logs</div>
-                          <div className="text-zinc-500 font-semibold text-xs mt-0.5">⏱ Queued</div>
+                          <div className="text-zinc-500 font-semibold text-xs mt-0.5">Queued</div>
                         </div>
                       </div>
 
                       {/* Live Audit Log Feed */}
                       <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800 space-y-1.5 font-mono text-xs text-zinc-300">
-                        <div className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider mb-1">Execution Event Stream</div>
+                        <div className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider mb-1">EXECUTION EVENT STREAM</div>
                         <div className="flex items-center space-x-2 text-emerald-400">
                           <Check className="w-3 h-3 shrink-0" />
                           <span>[10:42:01] Schema AST validated: 0 foreign key circularity locks detected</span>
@@ -392,24 +389,31 @@ export default function Landing() {
 
                     {/* Stream Telemetry Sidebar */}
                     <div className="space-y-3 flex flex-col justify-between">
+                      {/* Metric Card: Throughput */}
                       <div className="p-3.5 rounded-lg bg-zinc-950/60 border border-zinc-800">
-                        <span className="text-zinc-400 text-xs block mb-1">Data Throughput</span>
+                        <span className="text-zinc-400 text-xs block mb-1">Data throughput</span>
                         <div className="text-xl font-mono font-bold text-white flex items-baseline justify-between">
                           <span>42.8 MB/s</span>
-                          <span className="text-xs text-emerald-400 font-normal">Native Keyset</span>
+                          <span className="text-xs text-zinc-400 font-normal font-sans">Native keyset</span>
                         </div>
                       </div>
 
-                      <div className="p-3.5 rounded-lg bg-zinc-950/60 border border-zinc-800">
-                        <span className="text-zinc-400 text-xs block mb-1">Checksum Parity</span>
-                        <div className="text-xl font-mono font-bold text-emerald-400 flex items-baseline justify-between">
-                          <span>100.00%</span>
-                          <span className="text-xs text-zinc-400 font-normal">Bit-level match</span>
+                      {/* Audit Pass Card: Checksum Parity */}
+                      <div className="p-3.5 rounded-lg bg-emerald-950/20 border border-emerald-500/30 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-zinc-200 font-medium">Checksum parity</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center space-x-1">
+                            <Check className="w-3 h-3" />
+                            <span>SHA-256 PASS</span>
+                          </span>
+                        </div>
+                        <div className="text-xs text-zinc-400 font-mono">
+                          0 hash mismatches across 184.2M rows
                         </div>
                       </div>
 
                       <div className="p-3.5 rounded-lg bg-zinc-900/50 border border-zinc-800">
-                        <span className="text-zinc-300 text-xs font-semibold block mb-1">Transactional Safety</span>
+                        <span className="text-zinc-300 text-xs font-medium block mb-1">Transactional safety</span>
                         <p className="text-xs text-zinc-400 leading-relaxed">
                           Keyset offsets checkpointed every 50ms. If a target network packet drops, the engine resumes without key collision.
                         </p>
@@ -513,14 +517,13 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
             <div>
-              <span className="font-mono text-xs font-semibold text-indigo-400 uppercase tracking-wider">Cross-Engine Support</span>
+              <span className="text-xs font-semibold text-zinc-400">Cross-engine support</span>
               <h2 className="text-xl md:text-2xl font-bold text-white mt-1">
                 Any-to-any relational database migration.
               </h2>
             </div>
-            <Link to="/docs" className="text-xs font-medium text-indigo-400 hover:text-indigo-300 flex items-center space-x-1">
-              <span>View dialect compatibility specifications</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+            <Link to="/docs" className="text-xs font-medium text-indigo-400 hover:text-indigo-300">
+              View dialect compatibility specifications
             </Link>
           </div>
 
@@ -564,14 +567,14 @@ export default function Landing() {
       {/* ================= INTERACTIVE DIALECT CONVERTER SHOWCASE ================= */}
       <section className="py-20 px-6 max-w-6xl mx-auto w-full">
         <motion.div {...FADE_UP} className="mb-10 text-left">
-          <span className="font-mono text-xs font-semibold text-indigo-400 uppercase tracking-wider">
-            Abstract Syntax Tree Translation
+          <span className="text-xs font-semibold text-zinc-400">
+            Abstract syntax tree translation
           </span>
           <h2 className="text-2xl md:text-3xl font-bold text-white mt-1 mb-2">
-            Compile-time DDL conversion without regex guesswork.
+            How the AST compiler translates DDL across dialects
           </h2>
           <p className="text-sm text-zinc-400 max-w-2xl">
-            Fluxline parses source DDL into a typed syntax tree, maps relational constraints, resolves foreign key dependencies, and emits clean target SQL.
+            Fluxline parses source schema definitions into an abstract syntax tree to resolve constraint dependencies, type equivalences, and dialect-specific keywords before emitting target SQL.
           </p>
         </motion.div>
 
@@ -603,29 +606,28 @@ export default function Landing() {
           <div className="p-3.5 bg-zinc-900/70 border-b border-zinc-800 flex items-center justify-between text-xs font-mono text-zinc-400">
             <div className="flex items-center space-x-3">
               <span className="text-zinc-200">Source: <strong>{DIALECT_EXAMPLES[activeDialect].from}</strong></span>
-              <span>➔</span>
+              <span>to</span>
               <span className="text-emerald-400">Target: <strong>{DIALECT_EXAMPLES[activeDialect].to}</strong></span>
             </div>
-            <Link to="/sandbox" className="text-indigo-400 hover:text-indigo-300 font-sans font-medium flex items-center space-x-1">
-              <span>Test custom DDL in SQL Lab</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
+            <Link to="/sandbox" className="text-indigo-400 hover:text-indigo-300 font-sans font-medium">
+              Test custom DDL in SQL Lab
             </Link>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-zinc-800">
             <div className="p-5 bg-zinc-950/60 font-mono text-xs leading-relaxed text-zinc-300 overflow-x-auto">
-              <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-2">Source Dialect DDL</div>
+              <div className="text-xs text-zinc-400 font-medium mb-2">Source dialect DDL</div>
               <pre><code>{DIALECT_EXAMPLES[activeDialect].sourceCode}</code></pre>
             </div>
 
             <div className="p-5 bg-zinc-950/90 font-mono text-xs leading-relaxed text-emerald-300/90 overflow-x-auto">
-              <div className="text-[10px] text-emerald-500 uppercase font-bold tracking-wider mb-2">Translated Target DDL</div>
+              <div className="text-xs text-emerald-400 font-medium mb-2">Translated target DDL</div>
               <pre><code>{DIALECT_EXAMPLES[activeDialect].targetCode}</code></pre>
             </div>
           </div>
 
           <div className="p-4 bg-zinc-900/40 border-t border-zinc-800 text-xs">
-            <h4 className="text-zinc-400 font-semibold font-mono text-[11px] uppercase tracking-wider mb-2">Dialect Specifics Handled:</h4>
+            <h4 className="text-zinc-300 font-medium text-xs mb-2">Dialect specifics handled</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-zinc-300 font-mono text-[11px]">
               {DIALECT_EXAMPLES[activeDialect].notes.map((note, idx) => (
                 <div key={idx} className="flex items-center space-x-2">
@@ -643,7 +645,7 @@ export default function Landing() {
       <section className="py-16 border-y border-zinc-800/80 bg-zinc-950/40">
         <div className="max-w-6xl mx-auto px-6">
           <div className="mb-8">
-            <span className="font-mono text-xs font-semibold text-indigo-400 uppercase tracking-wider">Engine Performance</span>
+            <span className="text-xs font-semibold text-zinc-400">Engine performance</span>
             <h2 className="text-2xl font-bold text-white mt-1">
               Throughput benchmarked on production datasets.
             </h2>
@@ -702,7 +704,7 @@ export default function Landing() {
       {/* ================= 6 CORE ENGINEERING PILLARS ================= */}
       <section className="py-20 px-6 max-w-6xl mx-auto" id="features">
         <motion.div {...FADE_UP} className="mb-12 text-left">
-          <span className="font-mono text-xs font-semibold text-indigo-400 uppercase tracking-wider">Architecture</span>
+          <span className="text-xs font-semibold text-zinc-400">Architecture</span>
           <h2 className="text-2xl md:text-3xl font-bold text-white mt-1">
             Engineered for production database reliability.
           </h2>
@@ -795,7 +797,7 @@ export default function Landing() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
             
             <motion.div {...FADE_UP}>
-              <span className="font-mono text-xs font-semibold text-indigo-400 uppercase tracking-wider">Developer Workflows</span>
+              <span className="text-xs font-semibold text-zinc-400">Developer workflows</span>
               <h2 className="text-2xl font-bold text-white mt-1 mb-3">
                 Run via web console, CLI, or CI/CD pipelines.
               </h2>
@@ -868,49 +870,6 @@ export default function Landing() {
       </section>
 
 
-      {/* ================= REAL INFRASTRUCTURE CASE STUDIES ================= */}
-      <section className="py-20 px-6 max-w-6xl mx-auto">
-        <div className="mb-12 text-left">
-          <span className="font-mono text-xs font-semibold text-indigo-400 uppercase tracking-wider">Field Proven</span>
-          <h2 className="text-2xl font-bold text-white mt-1">
-            Proven on mission-critical production cutovers.
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="p-6 rounded-xl bg-zinc-900/40 border border-zinc-800 flex flex-col justify-between">
-            <p className="text-xs text-zinc-300 leading-relaxed mb-6">
-              "We had to migrate 180 million rows from legacy PostgreSQL to Aurora MySQL for a multi-tenant client. Fluxline caught 3 subtle enum gotchas during pre-flight dry-run and finished the live cutover with zero application downtime."
-            </p>
-            <div className="pt-4 border-t border-zinc-800/80">
-              <div className="text-xs font-semibold text-white">Data Infrastructure Architect</div>
-              <div className="text-[11px] text-zinc-500 font-mono">Fintech Ledger System</div>
-            </div>
-          </div>
-
-          <div className="p-6 rounded-xl bg-zinc-900/40 border border-zinc-800 flex flex-col justify-between">
-            <p className="text-xs text-zinc-300 leading-relaxed mb-6">
-              "The AST translation alone saved our data engineering team weeks of writing manual mapping scripts. SQL Server IDENTITY sequences and DATETIME2 columns mapped to PostgreSQL with exact millisecond accuracy."
-            </p>
-            <div className="pt-4 border-t border-zinc-800/80">
-              <div className="text-xs font-semibold text-white">Principal Systems Engineer</div>
-              <div className="text-[11px] text-zinc-500 font-mono">B2B SaaS Platform</div>
-            </div>
-          </div>
-
-          <div className="p-6 rounded-xl bg-zinc-900/40 border border-zinc-800 flex flex-col justify-between">
-            <p className="text-xs text-zinc-300 leading-relaxed mb-6">
-              "The cryptographic checksum verification was essential for our SOC2 audit. We had an exact row count and hash parity report for all 140 tables signed off in minutes."
-            </p>
-            <div className="pt-4 border-t border-zinc-800/80">
-              <div className="text-xs font-semibold text-white">Staff DevOps Lead</div>
-              <div className="text-[11px] text-zinc-500 font-mono">E-Commerce Infrastructure</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-
       {/* ================= TECHNICAL FAQ ================= */}
       <section className="py-16 border-t border-zinc-800/80 max-w-4xl mx-auto px-6">
         <div className="mb-10 text-left">
@@ -965,7 +924,6 @@ export default function Landing() {
               className="w-full sm:w-auto px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-sans text-sm font-semibold transition-all shadow-sm flex items-center justify-center space-x-2"
             >
               <span>Start Migration</span>
-              <ArrowRight className="w-4 h-4" />
             </Link>
             <Link 
               to="/sandbox" 

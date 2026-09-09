@@ -135,7 +135,6 @@ export default function MarketingHeader() {
               className="px-4 py-2 rounded-lg font-sans text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition-all shadow-sm flex items-center space-x-1.5"
             >
               <span>Console</span>
-              <ArrowRight className="w-3.5 h-3.5 opacity-70" />
             </Link>
           </div>
 

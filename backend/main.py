@@ -5,6 +5,7 @@ from pydantic import BaseModel
 import uvicorn
 import asyncio
 import os
+import re
 from dotenv import load_dotenv
 
 import sys
@@ -505,34 +506,89 @@ def test_db(config: ConnectionConfig):
         raise HTTPException(status_code=400, detail=err)
     return {"status": "success", "message": f"Successfully verified connection to {config.db_type} at {config.host}:{config.port}"}
 
+def clean_ddl(ddl: str, dialect: str = "") -> str:
+    import re
+    if not ddl or not ddl.strip():
+        return ""
+    clean = ddl.strip()
+
+    # Remove single line comments
+    clean = re.sub(r'--[^\n]*', '', clean)
+    # Remove block comments
+    clean = re.sub(r'/\*.*?\*/', '', clean, flags=re.DOTALL)
+
+    # Clean MySQL DELIMITER directives if present
+    clean = re.sub(r'(?i)^\s*DELIMITER\s+\S+\s*', '', clean)
+    clean = re.sub(r'(?i)\s*DELIMITER\s+;\s*$', '', clean)
+    clean = re.sub(r'(?i)DELIMITER\s+\S+\s*\n', '\n', clean)
+
+    return clean.strip()
+
+def execute_mssql_ddl(cursor, ddl: str):
+    import re
+    if not ddl or not ddl.strip():
+        return
+    # Split on GO separator
+    batches = re.split(
+        r'^\s*GO\s*$', ddl,
+        flags=re.MULTILINE | re.IGNORECASE
+    )
+    for batch in batches:
+        batch = batch.strip()
+        if batch:
+            try:
+                cursor.execute(batch)
+            except Exception as e:
+                raise Exception(
+                    f"MSSQL DDL failed: {str(e)}\n"
+                    f"DDL attempted:\n"
+                    f"{batch[:500]}"
+                )
+
 def execute_ddl(cursor, ddl: str, dialect: str):
     import re
     if not ddl or not ddl.strip():
         return
     dialect = dialect.lower()
-    clean_ddl = ddl.strip()
-
-    # Clean DELIMITER directives if present
-    clean_ddl = re.sub(r'(?i)^\s*DELIMITER\s+\S+\s*', '', clean_ddl)
-    clean_ddl = re.sub(r'(?i)\s*DELIMITER\s+;\s*$', '', clean_ddl)
-    clean_ddl = clean_ddl.strip()
-
-    # For MySQL: split DROP IF EXISTS + CREATE into separate statements
-    if dialect == "mysql" and re.search(r'DROP\s+(TRIGGER|PROCEDURE|FUNCTION)\s+IF\s+EXISTS', clean_ddl, re.IGNORECASE):
-        parts = re.split(r';\s*(?=CREATE\s)', clean_ddl, maxsplit=1)
-        for part in parts:
-            stmt = part.strip().rstrip(';') + ';'
-            if stmt.strip() != ';':
-                cursor.execute(stmt)
+    clean_sql = clean_ddl(ddl, dialect)
+    if not clean_sql:
         return
+
+    # Handle MSSQL batches via GO
+    if dialect in ["mssql", "sqlserver", "sql server"]:
+        execute_mssql_ddl(cursor, clean_sql)
+        return
+
+    # For MySQL: multi-statement object handling
+    if dialect == "mysql":
+        # Safely remove DELIMITER commands without crossing newlines
+        ddl_clean = re.sub(r'(?i)^[ \t]*(\$\$[ \t]*)?DELIMITER[ \t]*.*$', '', clean_sql, flags=re.MULTILINE)
+        ddl_clean = re.sub(r'\$\$[ \t]*$', '', ddl_clean, flags=re.MULTILINE)
+        ddl_clean = ddl_clean.replace('$$', '').strip()
+        
+        try:
+            # Extract and execute any DROP statements first
+            while True:
+                drop_match = re.match(r'(?i)^\s*(DROP\s+(PROCEDURE|FUNCTION|TRIGGER)\s+IF\s+EXISTS\s+[a-zA-Z0-9_`]+)\s*;?', ddl_clean)
+                if not drop_match:
+                    break
+                cursor.execute(drop_match.group(1))
+                ddl_clean = ddl_clean[drop_match.end():].strip()
+                
+            # Execute the remaining CREATE statement
+            if ddl_clean:
+                cursor.execute(ddl_clean)
+            return
+        except Exception:
+            raise
 
     # Dollar-quote-aware multi-statement splitter for PostgreSQL
     # Splits on blank-line boundaries while respecting $$ ... $$ blocks
-    if dialect in ["postgres", "postgresql"] and "$$" in clean_ddl:
+    if dialect in ["postgres", "postgresql"] and "$$" in clean_sql:
         statements = []
         current = []
         in_dollar_quote = False
-        for line in clean_ddl.splitlines():
+        for line in clean_sql.splitlines():
             stripped = line.strip()
             # Track $$ open/close
             dollar_count = stripped.count("$$")
@@ -557,26 +613,75 @@ def execute_ddl(cursor, ddl: str, dialect: str):
         return
 
     # Simple multi-statement split on blank-line boundaries (non-Postgres)
-    if ";\n\n" in clean_ddl or ";\r\n\r\n" in clean_ddl:
-        statements = [s.strip() for s in re.split(r';\s*\n\s*\n', clean_ddl) if s.strip()]
+    if ";\n\n" in clean_sql or ";\r\n\r\n" in clean_sql:
+        statements = [s.strip() for s in re.split(r';\s*\n\s*\n', clean_sql) if s.strip()]
         for stmt in statements:
             if stmt:
                 cursor.execute(stmt if stmt.endswith(";") else stmt + ";")
         return
 
-    uppercase_ddl = clean_ddl.upper()
+    uppercase_ddl = clean_sql.upper()
     if any(kw in uppercase_ddl for kw in ["CREATE PROCEDURE", "CREATE FUNCTION", "CREATE TRIGGER", "CREATE VIEW", "CREATE OR REPLACE"]):
-        cursor.execute(clean_ddl)
+        cursor.execute(clean_sql)
         return
 
     if dialect in ["postgres", "postgresql", "mysql"]:
-        parts = re.split(r';\s*(?=\n|\r|$)', clean_ddl)
+        parts = re.split(r';\s*(?=\n|\r|$)', clean_sql)
         for part in parts:
             stmt = part.strip()
             if stmt:
                 cursor.execute(stmt)
     else:
-        cursor.execute(clean_ddl)
+        cursor.execute(clean_sql)
+
+async def auto_apply_object(obj, translated_ddl: str, cursor, target_config):
+    import re
+    obj_name = getattr(obj, "name", str(obj)) if hasattr(obj, "name") else (obj.get("name") if isinstance(obj, dict) else str(obj))
+    db_type = getattr(target_config, "db_type", None) or (target_config.get("db_type") if isinstance(target_config, dict) else str(target_config))
+
+    try:
+        # Clean up DDL
+        cleaned_ddl = clean_ddl(translated_ddl, db_type)
+        if not cleaned_ddl:
+            return {"status": "skipped", "object": obj_name}
+
+        # Execute on target
+        execute_ddl(cursor, cleaned_ddl, db_type)
+
+        return {
+            "status": "applied",
+            "object": obj_name
+        }
+
+    except NameError as e:
+        # Python code bug — missing import
+        raise Exception(
+            f"Internal error (missing import): {str(e)}. Please report this bug."
+        )
+
+    except SyntaxError as e:
+        # Bad DDL syntax
+        raise Exception(
+            f"DDL syntax error in '{obj_name}': {str(e)}\n"
+            f"The LLM translation may have produced invalid {db_type} SQL."
+        )
+
+    except Exception as e:
+        error_str = str(e)
+
+        # Database-specific errors
+        if '42601' in error_str or 'syntax error' in error_str.lower():
+            raise Exception(
+                f"SQL syntax error applying '{obj_name}': {error_str}"
+            )
+        elif 'permission' in error_str.lower() or 'privilege' in error_str.lower():
+            raise Exception(
+                f"Insufficient privileges to create '{obj_name}' on target database."
+            )
+        else:
+            raise Exception(
+                f"Failed to apply '{obj_name}': {error_str}"
+            )
 
 class ApproveObjectRequest(BaseModel):
     object_name: str
@@ -1118,12 +1223,22 @@ async def run_migration_pipeline(req: MigrationRequest, job_id: str):
                     else:
                         res = await translation_agent.translate_procedure_or_trigger(obj, req.source.db_type, req.target.db_type, source_database=req.source.database)
                     
+                    # Validate target dialect
+                    is_valid, validation_msg = translation_agent.validate_target_dialect(res.translated_definition, req.source.db_type, req.target.db_type)
+                    if not is_valid:
+                        res.translation_error = validation_msg
+                        res.needs_human_review = True
+                        res.compile_status = "Invalid target syntax"
+                        await broadcast_progress({"type": "log", "level": "WARN", "message": f"Validation failed for {obj.name}: {validation_msg}", "table": obj.name, "stage": "migrate_data"}, job_id=job_id)
+                        await broadcast_progress({"type": "table_progress", "step": "data", "status": "error", "table": obj.name, "object_type": obj.object_type, "rows_done": 0, "rows_total": 1, "message": validation_msg}, job_id=job_id)
+                        continue
+
                     # Auto-apply objects if translated definition exists
                     if obj.object_type in ["view", "procedure", "trigger", "function", "trigger_function"] and res.translated_definition:
                         try:
                             target_raw = get_raw_conn(req.target)
                             cursor = target_raw.cursor()
-                            execute_ddl(cursor, res.translated_definition, req.target.db_type)
+                            await auto_apply_object(obj, res.translated_definition, cursor, req.target)
                             if hasattr(target_raw, "commit"):
                                 target_raw.commit()
                             target_raw.close()
@@ -1148,28 +1263,33 @@ async def run_migration_pipeline(req: MigrationRequest, job_id: str):
                                     obj_dict_for_retry, req.target.db_type, first_error, source_database=req.source.database
                                 )
                                 if fixed_res.translated_definition and fixed_res.translated_definition != res.translated_definition:
-                                    # Re-attempt execution with the LLM's corrected SQL
-                                    try:
-                                        target_raw2 = get_raw_conn(req.target)
-                                        cursor2 = target_raw2.cursor()
-                                        execute_ddl(cursor2, fixed_res.translated_definition, req.target.db_type)
-                                        if hasattr(target_raw2, "commit"):
-                                            target_raw2.commit()
-                                        target_raw2.close()
-                                        # LLM fix succeeded!
-                                        res.translated_definition = fixed_res.translated_definition
-                                        res.translation_method = "llm_full"
-                                        res.approved_by_user = True
-                                        res.needs_human_review = False
-                                        res.compile_status = "Compiled successfully (after AI fix)"
-                                        res.translation_error = None
-                                        retry_success = True
-                                        await broadcast_progress({"type": "log", "level": "INFO", "message": f"LLM fix succeeded for {obj.name}", "table": obj.name, "stage": "migrate_data"}, job_id=job_id)
-                                        await broadcast_progress({"type": "table_progress", "step": "data", "status": "done", "table": obj.name, "object_type": obj.object_type, "rows_done": 1, "rows_total": 1}, job_id=job_id)
-                                    except Exception as retry_exec_err:
-                                        # LLM fix also failed to compile
-                                        res.translated_definition = fixed_res.translated_definition
-                                        res.translation_error = f"Auto-apply failed: {first_error}. AI fix also failed: {str(retry_exec_err)}"
+                                    # Validate retry dialect
+                                    is_valid_retry, validation_msg_retry = translation_agent.validate_target_dialect(fixed_res.translated_definition, req.source.db_type, req.target.db_type)
+                                    if not is_valid_retry:
+                                        res.translation_error = f"Auto-apply failed: {first_error}. AI fix validation failed: {validation_msg_retry}"
+                                    else:
+                                        # Re-attempt execution with the LLM's corrected SQL
+                                        try:
+                                            target_raw2 = get_raw_conn(req.target)
+                                            cursor2 = target_raw2.cursor()
+                                            await auto_apply_object(obj, fixed_res.translated_definition, cursor2, req.target)
+                                            if hasattr(target_raw2, "commit"):
+                                                target_raw2.commit()
+                                            target_raw2.close()
+                                            # LLM fix succeeded!
+                                            res.translated_definition = fixed_res.translated_definition
+                                            res.translation_method = "llm_full"
+                                            res.approved_by_user = True
+                                            res.needs_human_review = False
+                                            res.compile_status = "Compiled successfully (after AI fix)"
+                                            res.translation_error = None
+                                            retry_success = True
+                                            await broadcast_progress({"type": "log", "level": "INFO", "message": f"LLM fix succeeded for {obj.name}", "table": obj.name, "stage": "migrate_data"}, job_id=job_id)
+                                            await broadcast_progress({"type": "table_progress", "step": "data", "status": "done", "table": obj.name, "object_type": obj.object_type, "rows_done": 1, "rows_total": 1}, job_id=job_id)
+                                        except Exception as retry_exec_err:
+                                            # LLM fix also failed to compile
+                                            res.translated_definition = fixed_res.translated_definition
+                                            res.translation_error = f"Auto-apply failed: {first_error}. AI fix also failed: {str(retry_exec_err)}"
                                     
                             except Exception:
                                 pass  # LLM retry itself failed (e.g. no API key)
