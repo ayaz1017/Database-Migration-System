@@ -80,6 +80,14 @@ class TransactionManager:
         elif self.db_type == "mssql":
             for table in self.group_tables:
                 self.cursor.execute(f"ALTER TABLE {table} NOCHECK CONSTRAINT ALL")
+        elif self.db_type == "oracle":
+            for table in self.group_tables:
+                try:
+                    self.cursor.execute(f"SELECT constraint_name FROM user_constraints WHERE table_name = UPPER('{table}') AND constraint_type = 'R'")
+                    for (cname,) in self.cursor.fetchall():
+                        self.cursor.execute(f"ALTER TABLE {table} DISABLE CONSTRAINT {cname}")
+                except Exception:
+                    pass
 
     def enable_constraints(self) -> None:
         if self.db_type in ["postgres", "postgresql"]:
@@ -89,6 +97,14 @@ class TransactionManager:
         elif self.db_type == "mssql":
             for table in self.group_tables:
                 self.cursor.execute(f"ALTER TABLE {table} CHECK CONSTRAINT ALL")
+        elif self.db_type == "oracle":
+            for table in self.group_tables:
+                try:
+                    self.cursor.execute(f"SELECT constraint_name FROM user_constraints WHERE table_name = UPPER('{table}') AND constraint_type = 'R'")
+                    for (cname,) in self.cursor.fetchall():
+                        self.cursor.execute(f"ALTER TABLE {table} ENABLE CONSTRAINT {cname}")
+                except Exception:
+                    pass
 
     def validate_constraints(self) -> list[dict]:
         violations = []
@@ -192,6 +208,19 @@ class TransactionManager:
                 self._use_tablock_cache = {}
             self._use_tablock_cache[table] = True
             logger.info(f"Enabled TABLOCK hint for {table}")
+        elif self.db_type == "oracle":
+            try:
+                self.cursor.execute(f"SELECT index_name FROM user_indexes WHERE table_name = UPPER('{table}') AND index_type = 'NORMAL'")
+                indexes = self.cursor.fetchall()
+                if indexes:
+                    self._save_dropped_indexes(table, [idx[0] for idx in indexes])
+                    for (idx_name,) in indexes:
+                        self.cursor.execute(f"ALTER INDEX {idx_name} UNUSABLE")
+                    # Session must skip unusable indexes to allow inserts
+                    self.cursor.execute("ALTER SESSION SET SKIP_UNUSABLE_INDEXES = TRUE")
+                    logger.info(f"Marked indexes UNUSABLE for {table}")
+            except Exception as e:
+                logger.warning(f"Failed to mark indexes unusable for {table}: {e}")
 
     def enable_indexes_for_table(self, table: str):
         if self.db_type in ["postgres", "postgresql"]:
@@ -210,6 +239,16 @@ class TransactionManager:
                 logger.info(f"Re-enabled keys for {table}")
             except Exception:
                 pass
+        elif self.db_type == "oracle":
+            indexes = self._get_dropped_indexes(table)
+            if indexes:
+                for idx_name in indexes:
+                    try:
+                        self.cursor.execute(f"ALTER INDEX {idx_name} REBUILD")
+                    except Exception as e:
+                        logger.warning(f"Failed to rebuild index {idx_name}: {e}")
+                self._clear_dropped_indexes(table)
+                logger.info(f"Rebuilt indexes for {table}")
 
     def commit(self) -> None:
         self.conn.commit()
@@ -367,9 +406,37 @@ class TransactionManager:
                     pass
                 self.cursor.executemany(sql, data)
                 return len(rows)
+            elif self.db_type == "oracle":
+                placeholders = ", ".join([f":{i+1}" for i in range(len(columns))])
+                sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})"
+                
+                import datetime as _dt
+                import decimal as _decimal
+                import uuid as _uuid
+                
+                def _sanitize_oracle(val):
+                    if val is None:
+                        return None
+                    if isinstance(val, bool):
+                        return 1 if val else 0
+                    if isinstance(val, _uuid.UUID):
+                        return str(val)
+                    if isinstance(val, _decimal.Decimal):
+                        return float(val)
+                    if isinstance(val, _dt.timedelta):
+                        total = int(val.total_seconds())
+                        h, rem = divmod(abs(total), 3600)
+                        m, s = divmod(rem, 60)
+                        return f"{'-' if total < 0 else ''}{h:02}:{m:02}:{s:02}"
+                    if not isinstance(val, (int, float, str, bytes, _dt.datetime, _dt.date, _dt.time)):
+                        return str(val)
+                    return val
+                
+                data = [tuple(_sanitize_oracle(row[col]) for col in columns) for row in rows]
+                self.cursor.executemany(sql, data)
+                return len(rows)
 
             return 0
-
         except Exception as e:
             # ── Step A: Rollback partial writes immediately ────────────────
             try:
