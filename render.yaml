@@ -7,9 +7,8 @@ services:
     name: fluxline-backend
     env: python
     region: oregon
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: ENVIRONMENT
         value: production
@@ -35,9 +34,8 @@ services:
     name: fluxline-frontend
     env: static
     region: oregon
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: ./frontend/dist
     envVars:
       - key: VITE_API_URL
         sync: false
