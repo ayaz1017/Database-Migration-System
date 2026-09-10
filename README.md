@@ -37,65 +37,43 @@ FastAPI Backend (Python 3.12+)
 - Node.js 18+
 - Required Database Drivers (e.g., ODBC Driver 17 for SQL Server, Oracle Instant Client if needed)
 
-## Setup Instructions
+## Quick Start (Docker)
 
-Follow these commands to get the project running locally.
+Requirements:
+- Docker Desktop (8GB+ RAM allocated)
+- 15GB free disk space (for Ollama model)
 
-### 1. Clone the repository
 ```bash
 git clone https://github.com/ayaz1017/Database-Migration-System.git
 cd Database-Migration-System
-```
 
-### 2. Backend Setup (FastAPI)
-Open a terminal and set up the Python backend from the root of the project:
-```bash
-# Navigate to the backend directory
-cd backend
-
-# Create and activate a virtual environment
-python -m venv venv
-
-# Activate on Windows:
-source venv/Scripts/activate 
-# (Or `.\venv\Scripts\activate` if using PowerShell)
-
-# Install required Python packages
-pip install -r requirements.txt
-
-# Create your environment variables file
+# Copy and configure environment
 cp .env.example .env
+# Edit .env: set JWT_SECRET_KEY and 
+# DEFAULT_ADMIN_PASSWORD
+
+# Start everything
+./start.sh        # Mac/Linux
+start.bat         # Windows
+
+# Open in browser
+open http://localhost:3000
 ```
 
-### 3. Environment Variables
-Edit the `backend/.env` file and add your OpenAI API key (required for schema translation) and any default database credentials:
+First run takes 5-10 minutes to 
+download the Ollama model (~5GB).
+Subsequent starts take ~30 seconds.
 
-```env
-OPENAI_API_KEY=your_api_key_here
+## Default Login
+Email: admin@fluxline.local
+Password: (set in .env)
 
-# (Optional) Default test connection parameters
-MSSQL_HOST=
-MYSQL_HOST=
-PG_HOST=
-```
+## Stop
+docker-compose down
 
-### 4. Run the Application
-**Terminal 1: Start the Backend Server**
-```bash
-# From the root of the project:
-source backend/venv/Scripts/activate
-uvicorn backend.main:app --reload --port 8000
-```
-
-**Terminal 2: Start the Frontend Application**
-```bash
-# From the root of the project:
-cd frontend
-npm install
-npm run dev
-```
-
-The application UI will now be accessible in your browser at `http://localhost:5173`.
+## View logs
+docker-compose logs -f backend
+docker-compose logs -f ollama
 
 ## Migration Modes
 - **Full Load (Streaming)**: High-performance streaming chunked extraction for data syncing.

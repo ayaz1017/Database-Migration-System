@@ -132,7 +132,7 @@ class ObjectTranslationAgent:
         tgt = target_dialect.lower()
         
         if src in ["postgres", "postgresql"] and tgt == "mysql":
-            # Reject generated SQL if it contains obvious PostgreSQL-only constructs
+            
             upper_sql = sql_text.upper()
             
             invalid_constructs = [
@@ -179,7 +179,7 @@ class ObjectTranslationAgent:
             return sql_text
         tgt = target_dialect.lower()
         if tgt in ["postgres", "postgresql"]:
-            # Replace backtick-quoted identifiers with unquoted names
+            
             sql_text = re.sub(r'`([^`]+)`', r'\1', sql_text)
         elif tgt == "mssql":
             sql_text = re.sub(r'`([^`]+)`', r'[\1]', sql_text)
@@ -198,9 +198,9 @@ class ObjectTranslationAgent:
             common_schemas.append(source_database)
         
         for schema in common_schemas:
-            # Strip `schema`.`table` -> `table`
+            
             sql_text = re.sub(rf'`{re.escape(schema)}`\s*\.\s*`([^`]+)`', r'`\1`', sql_text, flags=re.IGNORECASE)
-            # Strip `schema`.table -> table
+            
             sql_text = re.sub(rf'`{re.escape(schema)}`\s*\.\s*', '', sql_text, flags=re.IGNORECASE)
             # Strip "schema"."table" -> "table"
             sql_text = re.sub(rf'"{re.escape(schema)}"\s*\.\s*"([^"]+)"', r'"\1"', sql_text, flags=re.IGNORECASE)
@@ -223,12 +223,12 @@ class ObjectTranslationAgent:
         source_lower = source_dialect.lower()
         target_lower = target_dialect.lower()
 
-        # Strip MySQL-specific SHOW CREATE VIEW clauses (DEFINER, ALGORITHM, SQL SECURITY)
+        
         translated = re.sub(r"\bDEFINER\s*=\s*`?[^`\s]+`?\s*@\s*`?[^`\s]+`?\s*", "", translated, flags=re.IGNORECASE)
         translated = re.sub(r"\bALGORITHM\s*=\s*\w+\s*", "", translated, flags=re.IGNORECASE)
         translated = re.sub(r"\bSQL\s+SECURITY\s+\w+\s*", "", translated, flags=re.IGNORECASE)
 
-        # Replace dialect-specific functions
+        
         translated = re.sub(r"\bgetdate\s*\(\s*\)", "CURRENT_TIMESTAMP", translated, flags=re.IGNORECASE)
         translated = re.sub(r"\bsysdate\b", "CURRENT_TIMESTAMP", translated, flags=re.IGNORECASE)
         translated = re.sub(r"\bnow\s*\(\s*\)", "CURRENT_TIMESTAMP", translated, flags=re.IGNORECASE)
